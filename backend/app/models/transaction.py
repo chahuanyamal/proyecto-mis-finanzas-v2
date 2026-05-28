@@ -17,6 +17,9 @@ class Transaction(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True, default=uuid.uuid4
     )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     uploaded_file_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("uploaded_files.id", ondelete="CASCADE"),
         nullable=False,
@@ -50,6 +53,7 @@ class Transaction(Base, TimestampMixin):
         String(10), nullable=False
     )
 
+    user = relationship("User")
     uploaded_file = relationship("UploadedFile", back_populates="transactions")
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")

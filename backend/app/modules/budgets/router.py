@@ -77,6 +77,15 @@ async def create_budget(
     return await _budget_or_404(budget_id, db, current_user)
 
 
+@router.get("/{budget_id}", response_model=BudgetOut)
+async def get_budget(
+    budget_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Budget:
+    return await _budget_or_404(budget_id, db, current_user)
+
+
 @router.patch("/{budget_id}", response_model=BudgetOut)
 async def update_budget(
     budget_id: uuid.UUID,

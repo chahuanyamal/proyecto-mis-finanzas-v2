@@ -8,13 +8,57 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import REFRESH_TOKEN_TYPE, decode_token, verify_password
+from app.core.security import REFRESH_TOKEN_TYPE, decode_token, hash_password, verify_password
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
-from app.modules.auth.schemas import LoginRequest, LoginResponse, UserOut
+from app.modules.auth.schemas import LoginRequest, LoginResponse, RegisterRequest, UserOut
 from app.modules.auth.service import REFRESH_COOKIE, clear_auth_cookies, set_auth_cookies
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+
+@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+async def register(
+    body: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    email = body.email.strip().lower()
+    result = await db.execute(select(User).where(User.email == email))
+    if result.scalar_one_or_none() is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email ya registrado")
+    
+    user = User(
+        email=email,
+        hashed_password=hash_password(body.password),
+        full_name=body.full_name,
+        is_active=True,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return UserOut.model_validate(user)
+
+
+@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+async def register(
+    body: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    email = body.email.strip().lower()
+    result = await db.execute(select(User).where(User.email == email))
+    if result.scalar_one_or_none() is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email ya registrado")
+    
+    user = User(
+        email=email,
+        hashed_password=hash_password(body.password),
+        full_name=body.full_name,
+        is_active=True,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return UserOut.model_validate(user)
 
 
 @router.post("/login", response_model=LoginResponse)

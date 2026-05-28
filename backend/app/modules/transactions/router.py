@@ -202,7 +202,7 @@ async def create_transaction(
     account = await _account_or_404(body.account_id, db, current_user)
     await _category_or_404(body.category_id, db)
     uploaded_file = await _manual_uploaded_file(account, db, current_user)
-    transaction = Transaction(uploaded_file_id=uploaded_file.id, **body.model_dump())
+    transaction = Transaction(uploaded_file_id=uploaded_file.id, user_id=current_user.id, **body.model_dump())
     db.add(transaction)
     await db.flush()
     transaction_id = transaction.id

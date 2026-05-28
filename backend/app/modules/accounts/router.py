@@ -77,9 +77,14 @@ async def create_account(
     account = Account(user_id=current_user.id, **body.model_dump())
     db.add(account)
     await db.flush()
-    account_id = account.id
     await db.commit()
-    return await _get_account_or_404(account_id, db, current_user)
+
+    result = await db.execute(
+        select(Account)
+        .options(selectinload(Account.institution))
+        .where(Account.id == account.id)
+    )
+    return result.scalar_one()
 
 
 @router.get("/accounts/{account_id}", response_model=AccountOut)
@@ -107,7 +112,8 @@ async def update_account(
         setattr(account, field, value)
 
     await db.commit()
-    return await _get_account_or_404(account_id, db, current_user)
+    await db.refresh(account, ["institution"])
+    return account
 
 
 @router.delete("/accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
