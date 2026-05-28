@@ -53,3 +53,31 @@ class TestAuthLogout:
         assert resp.status_code == 200
         me_resp = await auth_client.get("/api/v1/auth/me")
         assert me_resp.status_code == 401
+
+
+class TestTokenRevocation:
+    async def test_access_token_invalid_after_logout(self, client: AsyncClient, test_user) -> None:
+        login = await client.post("/api/v1/auth/login", json={"username": test_user.email, "password": "test123"})
+        access = login.cookies["access_token"]
+        client.cookies.update(login.cookies)
+        await client.post("/api/v1/auth/logout")
+
+        # Reutilizar el access token revocado (no solo la cookie borrada) → 401.
+        client.cookies.clear()
+        client.cookies.set("access_token", access)
+        resp = await client.get("/api/v1/auth/me")
+        assert resp.status_code == 401
+
+    async def test_old_refresh_token_rejected_after_rotation(self, client: AsyncClient, test_user) -> None:
+        login = await client.post("/api/v1/auth/login", json={"username": test_user.email, "password": "test123"})
+        old_refresh = login.cookies["refresh_token"]
+        client.cookies.update(login.cookies)
+
+        first = await client.post("/api/v1/auth/refresh")
+        assert first.status_code == 200
+
+        # El refresh token original quedó revocado por la rotación.
+        client.cookies.clear()
+        client.cookies.set("refresh_token", old_refresh)
+        second = await client.post("/api/v1/auth/refresh")
+        assert second.status_code == 401

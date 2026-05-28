@@ -12,7 +12,16 @@ from app.core.security import REFRESH_TOKEN_TYPE, decode_token, hash_password, v
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
 from app.modules.auth.schemas import LoginRequest, LoginResponse, RegisterRequest, UserOut
-from app.modules.auth.service import REFRESH_COOKIE, clear_auth_cookies, set_auth_cookies
+from app.modules.auth.service import (
+    ACCESS_COOKIE,
+    REFRESH_COOKIE,
+    clear_auth_cookies,
+    is_token_revoked,
+    revoke_cookie_token,
+    revoke_jti,
+    set_auth_cookies,
+)
+from app.core.security import ACCESS_TOKEN_TYPE
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -72,17 +81,30 @@ async def refresh(
     except (PyJWTError, ValueError, TypeError):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh token inválido") from None
 
+    if await is_token_revoked(db, payload.get("jti")):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh token revocado")
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario no encontrado")
 
+    # Rotación: el refresh token usado se invalida para evitar su reutilización.
+    await revoke_jti(db, payload.get("jti"), payload.get("exp"))
     set_auth_cookies(response, user)
+    await db.commit()
     return {"ok": True}
 
 
 @router.post("/logout")
-async def logout(response: Response) -> dict[str, str]:
+async def logout(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    await revoke_cookie_token(db, request.cookies.get(ACCESS_COOKIE), ACCESS_TOKEN_TYPE)
+    await revoke_cookie_token(db, request.cookies.get(REFRESH_COOKIE), REFRESH_TOKEN_TYPE)
+    await db.commit()
     clear_auth_cookies(response)
     return {"message": "Sesión cerrada"}
 
