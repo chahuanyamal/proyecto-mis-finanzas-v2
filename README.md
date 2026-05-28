@@ -1,304 +1,228 @@
 # Mis Finanzas V2
 
-App web local de finanzas personales. Importar cartolas PDF, categorizar, dashboard mensual, presupuestos, exportación Excel.
+App web local de finanzas personales: importar cartolas PDF, categorizar movimientos, dashboard mensual, presupuestos y exportación a Excel. Multiusuario, con todos los datos aislados por `user_id`.
+
+---
 
 ## Stack
 
-| Capa       | Tecnología                            |
-| ---------- | ------------------------------------- |
-| Frontend   | Next.js 15 + TypeScript strict + Tailwind CSS |
-| Backend    | FastAPI + Python 3.12 + uv            |
-| ORM        | SQLAlchemy 2 async                    |
-| DB         | PostgreSQL 16 + asyncpg               |
-| Migraciones| Alembic                               |
-| PDF        | pdfplumber + pytesseract              |
-| Excel      | openpyxl                              |
-| Infra      | Docker Compose                        |
+| Capa         | Tecnología                                   | Versión        |
+| ------------ | -------------------------------------------- | -------------- |
+| Frontend     | Next.js (App Router) + React                 | 15.x / 19.x    |
+| Lenguaje FE  | TypeScript (`strict`)                        | 5.7            |
+| Estilos      | Tailwind CSS                                 | 3.4            |
+| Estado/datos | TanStack React Query + Zustand + Axios       | 5.x / 5.x / 1.7 |
+| Backend      | FastAPI + Uvicorn                            | 0.115 / 0.32   |
+| Lenguaje BE  | Python                                       | 3.12           |
+| Gestor deps  | uv                                           | 0.8+           |
+| ORM          | SQLAlchemy async                             | 2.0            |
+| Driver DB    | asyncpg                                      | 0.30           |
+| DB           | PostgreSQL                                   | 16             |
+| Migraciones  | Alembic                                      | 1.14           |
+| Auth         | PyJWT + bcrypt (cookies HttpOnly)            | 2.9 / 4.2      |
+| PDF / OCR    | pdfplumber + pytesseract (Tesseract OCR)     | 0.11 / 0.3     |
+| Excel        | openpyxl                                     | 3.1            |
+| Infra        | Docker Compose                               | —              |
 
-## Requisitos
+---
 
-- Docker + Docker Compose
-- (Desarrollo local) Node.js 22+, Python 3.12+, uv
+## Requisitos previos
 
-## Arranque rápido (Docker)
+**Para correr con Docker (recomendado):**
 
-```bash
-# 1. Crear archivo de entorno
-cp .env.example .env
+- Docker Engine **24+** y Docker Compose v2
 
-# 2. Editar .env: cambiar SECRET_KEY (recomendado: openssl rand -hex 32)
+**Para desarrollo local (sin Docker):**
 
-# 3. Levantar todos los servicios
-docker compose up --build -d
+- Node.js **22+** y npm 10+
+- Python **3.12+**
+- [uv](https://docs.astral.sh/uv/) **0.8+**
+- PostgreSQL **16** corriendo localmente (o accesible vía `DATABASE_URL`)
+- Tesseract OCR + paquete de idioma español (`tesseract-ocr`, `tesseract-ocr-spa`) — solo necesario para el fallback OCR de cartolas escaneadas
 
-# Esperar ~15s a que Postgres + backend estén listos
-```
-
-## Arranque con Makefile
-
-```bash
-make help          # Ver todos los comandos disponibles
-make build         # Reconstruir y levantar
-make up            # Levantar servicios (sin rebuild)
-make down          # Detener servicios
-make logs          # Ver logs en vivo
-make reset-db      # Destruir volúmenes y recrear desde cero
-make shell-backend # Entrar al contenedor del backend
-make shell-db      # Conectar a psql
-```
-
-## Servicios
-
-| Servicio      | URL                         |
-| ------------- | --------------------------- |
-| Frontend      | http://localhost:1510       |
-| Backend API   | http://localhost:8000       |
-| Swagger Docs  | http://localhost:8000/docs  |
-| PostgreSQL    | localhost:5432 (finanzas/finanzas) |
-
-## Desarrollo local
-
-### Backend
-
-```bash
-cd backend
-cp ../.env .
-uv sync
-uv run uvicorn app.main:app --reload --port 8000
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev      # http://localhost:3000
-```
-
-### Comandos disponibles
-
-| Comando              | Descripción                   |
-| -------------------- | ----------------------------- |
-| `npm run dev`        | Servidor de desarrollo        |
-| `npm run build`      | Build de producción           |
-| `npm run start`      | Iniciar build de producción   |
-| `npm run lint`       | Lint con ESLint               |
-| `npm run typecheck`  | Verificar tipos TypeScript    |
-
-### Base de datos (desarrollo local)
-
-Si ejecutas el backend fuera de Docker necesitas PostgreSQL corriendo localmente o ajustar `DATABASE_URL` en `.env`:
-
-```
-DATABASE_URL=postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas
-```
-
-### Migraciones
-
-```bash
-cd backend
-uv run alembic upgrade head     # Aplicar migraciones pendientes
-uv run alembic revision --autogenerate -m "descripción"  # Crear nueva migración
-```
-
-### Tests
-
-```bash
-cd backend
-uv run pytest
-```
-
-Los tests actuales cubren el parser de cartolas con fixtures de texto para Itaú, BICE, Prex y fallback genérico.
-
-## Admin por defecto
-
-Al iniciar por primera vez se crea automáticamente:
-
-| Campo     | Valor                    |
-| --------- | ------------------------ |
-| Email     | admin@finanzas.local     |
-| Password  | admin123                 |
-
-Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
-
-## Validación de cartolas reales
-
-Para cerrar un parser bancario contra cartolas reales:
-
-1. Levantar la app con `docker compose up --build -d`.
-2. Entrar a `http://localhost:1510` con el usuario admin.
-3. Crear o seleccionar una cuenta de la institución correspondiente.
-4. Subir el PDF en `/statements` y revisar el preview antes de confirmar.
-5. Verificar banco detectado, cantidad de filas, fechas, cargos/abonos y montos.
-6. Si falla, crear un fixture sanitizado en `backend/tests/` con texto extraído, nunca con datos personales reales.
-
-No hay PDFs reales en el repositorio; los parsers actuales se validan con fixtures sintéticos y deben ajustarse cuando se prueben cartolas reales.
-
-## Estado actual del proyecto
-
-**Etapa 1 — Scaffolding (completada)**
-
-- [x] Modelos SQLAlchemy + migración inicial
-- [x] Configuración del proyecto (config, DB, seguridad)
-- [x] Health check endpoint (`/health`)
-- [x] Bootstrap automático (migraciones + seed)
-- [x] Docker Compose funcional
-- [x] Frontend Next.js 15 scaffold con Tailwind CSS + React Query
-- [x] Endpoints API REST de autenticación (`/api/v1/auth/*`)
-- [x] Autenticación JWT con cookies HttpOnly (login, refresh, logout, me)
-- [x] CRUD básico de cuentas (`/api/v1/accounts`) + página `/accounts`
-- [x] CRUD básico de categorías, tags y reglas de categorización
-- [x] CRUD básico de transacciones manuales + página `/transactions`
-- [x] Presupuestos mensuales + página `/presupuestos`
-- [x] Dashboard mensual real (`/api/v1/dashboard/monthly`)
-- [x] Auto-categorización por reglas y exportación Excel de transacciones
-- [x] Upload PDF + parser fallback básico + historial `/statements`
-- [x] Preview/confirmación/cancelación/reproceso básico de cartolas PDF
-- [x] Detección inicial de banco + parsers Itaú/BICE/Prex/fallback
-- [x] OCR fallback con Tesseract cuando el PDF no trae texto útil
-- [x] Shell visual autenticado para navegación principal
-- [ ] Parsers bancarios específicos completos con fixtures reales por institución
-- [x] Tests unitarios iniciales del parser de cartolas
-- [ ] Cobertura completa de tests backend/frontend
-
-## Limitaciones actuales
-
-- **API parcial.** Existen `/health`, autenticación, cuentas, categorías, tags, reglas, transacciones manuales, presupuestos, dashboard mensual, auto-categorización, export Excel y cartolas PDF con preview/confirmación básica. Falta endurecer parsers bancarios con cartolas reales y reportes avanzados.
-- **Auth v1 simplificada.** Usa JWT en cookies HttpOnly, sin Redis ni blacklist de sesiones. Refresh token es JWT firmado, no persistido en BD.
-- **Frontend v1.** Login, shell autenticado y pantallas CRUD principales funcionan; falta pulir UX/validaciones finas.
-- **Cobertura baja de tests.** Hay tests unitarios iniciales para parsers de cartolas; faltan tests de API, auth, queries por `user_id` y frontend.
-- **PDF parsing inicial.** Usa `pdfplumber`; si no hay texto útil cae a OCR con `pytesseract`. Hay detección inicial para Itaú, BICE, Prex y fallback genérico, pero requiere validarse con PDFs reales.
-- **Admin creado sin verificación de unicidad en seed concurrente.** El seed de bootstrap no usa locking; si múltiples instancias arrancan simultáneamente puede haber race condition (poco probable en deploy single-instance).
-- **El `SECRET_KEY` por defecto es inseguro.** Debe cambiarse en producción con `openssl rand -hex 32`.
+---
 
 ## Variables de entorno
 
-| Variable               | Default                                                    | Descripción                         |
-| ---------------------- | ---------------------------------------------------------- | ----------------------------------- |
-| `APP_ENV`              | `development`                                              | Entorno de la app                   |
-| `DEBUG`                | `true`                                                     | SQLAlchemy echo / modo debug        |
-| `ALLOWED_ORIGINS`      | `http://localhost:1510`                                    | CORS origins (separar por coma)     |
-| `DATABASE_URL`         | `postgresql+asyncpg://finanzas:finanzas@postgres:5432/finanzas` | Conexión a BD                  |
-| `POSTGRES_DB`          | `finanzas`                                                 | Nombre BD                           |
-| `POSTGRES_USER`        | `finanzas`                                                 | Usuario BD                          |
-| `POSTGRES_PASSWORD`    | `finanzas`                                                 | Password BD                         |
-| `SECRET_KEY`           | `cambiar-en-produccion...`                                 | Clave JWT (min 32 chars)            |
-| `JWT_ALGORITHM`        | `HS256`                                                    | Algoritmo JWT                       |
-| `JWT_ACCESS_EXPIRE_MINUTES` | `15`                                                  | Expiración access token             |
-| `JWT_REFRESH_EXPIRE_DAYS`   | `7`                                                    | Expiración refresh token            |
-| `COOKIE_SECURE`        | `false`                                                   | Cookies solo HTTPS (`true` en prod con TLS) |
-| `UPLOAD_DIR`           | `/app/uploads`                                            | Carpeta de PDFs subidos                     |
-| `ADMIN_EMAIL`          | `admin@finanzas.local`                                     | Email admin inicial                 |
-| `ADMIN_FULL_NAME`      | `Admin`                                                    | Nombre admin inicial                |
-| `ADMIN_PASSWORD`       | `admin123`                                                 | Password admin inicial              |
+Copia `.env.example` a `.env` y ajusta los valores. En Docker Compose la mayoría tiene un valor por defecto integrado; **`SECRET_KEY` debe cambiarse antes de cualquier despliegue real**.
 
-## Endpoints implementados
+| Variable                     | Descripción                                                        | Requerida | Valor de ejemplo |
+| ---------------------------- | ------------------------------------------------------------------ | --------- | ---------------- |
+| `APP_ENV`                    | Entorno de ejecución (`development` / `production`)                | No        | `development` |
+| `DEBUG`                      | Activa `echo` de SQLAlchemy y modo debug                           | No        | `true` |
+| `ALLOWED_ORIGINS`            | Orígenes CORS permitidos (separados por coma)                      | No        | `http://localhost:1510` |
+| `INTERNAL_API_URL`           | URL interna del backend usada por el rewrite del frontend          | Sí (FE)   | `http://backend:8000` |
+| `DATABASE_URL`               | Cadena de conexión async a PostgreSQL                              | **Sí**    | `postgresql+asyncpg://finanzas:finanzas@postgres:5432/finanzas` |
+| `UPLOAD_DIR`                 | Carpeta donde se guardan los PDFs subidos                          | No        | `/app/uploads` |
+| `POSTGRES_DB`                | Nombre de la base de datos (servicio postgres)                     | **Sí**    | `finanzas` |
+| `POSTGRES_USER`              | Usuario de la base de datos                                        | **Sí**    | `finanzas` |
+| `POSTGRES_PASSWORD`          | Contraseña de la base de datos                                     | **Sí**    | `finanzas` |
+| `SECRET_KEY`                 | Clave de firma JWT (mínimo 32 chars; usar `openssl rand -hex 32`)  | **Sí**    | `c0ffee...` (32+ bytes hex) |
+| `JWT_ALGORITHM`              | Algoritmo de firma JWT                                             | No        | `HS256` |
+| `JWT_ACCESS_EXPIRE_MINUTES`  | Minutos de validez del access token                               | No        | `15` |
+| `JWT_REFRESH_EXPIRE_DAYS`    | Días de validez del refresh token                                 | No        | `7` |
+| `COOKIE_SECURE`              | Marca cookies como `Secure` (activar `true` en prod con HTTPS)     | No        | `false` |
+| `ADMIN_EMAIL`                | Email del admin creado en el seed inicial                         | No        | `admin@finanzas.local` |
+| `ADMIN_FULL_NAME`            | Nombre del admin inicial                                           | No        | `Admin` |
+| `ADMIN_PASSWORD`             | Contraseña del admin inicial                                       | No        | `admin123` |
 
-| Método | Ruta | Descripción |
-| ------ | ---- | ----------- |
-| `GET` | `/health` | Healthcheck con conexión a Postgres |
-| `POST` | `/api/v1/auth/login` | Login; setea cookies `access_token` y `refresh_token` |
-| `POST` | `/api/v1/auth/refresh` | Renueva cookies desde refresh token |
-| `POST` | `/api/v1/auth/logout` | Limpia cookies de sesión |
-| `GET` | `/api/v1/auth/me` | Usuario autenticado actual |
-| `GET` | `/api/v1/institutions` | Lista instituciones seeded |
-| `GET` | `/api/v1/accounts` | Lista cuentas del usuario autenticado |
-| `POST` | `/api/v1/accounts` | Crea cuenta para el usuario autenticado |
-| `GET` | `/api/v1/accounts/{id}` | Obtiene una cuenta propia |
-| `PATCH` | `/api/v1/accounts/{id}` | Edita una cuenta propia |
-| `DELETE` | `/api/v1/accounts/{id}` | Elimina una cuenta propia |
-| `GET` | `/api/v1/categories` | Lista categorías |
-| `POST` | `/api/v1/categories` | Crea categoría |
-| `PATCH` | `/api/v1/categories/{id}` | Edita categoría |
-| `DELETE` | `/api/v1/categories/{id}` | Elimina categoría |
-| `GET` | `/api/v1/tags` | Lista tags del usuario |
-| `POST` | `/api/v1/tags` | Crea tag |
-| `PATCH` | `/api/v1/tags/{id}` | Edita tag |
-| `DELETE` | `/api/v1/tags/{id}` | Elimina tag |
-| `GET` | `/api/v1/category-rules` | Lista reglas del usuario |
-| `POST` | `/api/v1/category-rules` | Crea regla |
-| `PATCH` | `/api/v1/category-rules/{id}` | Edita regla |
-| `DELETE` | `/api/v1/category-rules/{id}` | Elimina regla |
-| `GET` | `/api/v1/transactions` | Lista transacciones del usuario con filtros básicos |
-| `GET` | `/api/v1/transactions/export/excel` | Exporta transacciones a Excel |
-| `POST` | `/api/v1/transactions/auto-categorize` | Aplica reglas a transacciones sin categoría |
-| `POST` | `/api/v1/transactions` | Crea transacción manual |
-| `GET` | `/api/v1/transactions/{id}` | Obtiene transacción propia |
-| `PATCH` | `/api/v1/transactions/{id}` | Edita transacción propia |
-| `DELETE` | `/api/v1/transactions/{id}` | Elimina transacción propia |
-| `GET` | `/api/v1/budgets` | Lista presupuestos del usuario |
-| `POST` | `/api/v1/budgets` | Crea presupuesto mensual |
-| `PATCH` | `/api/v1/budgets/{id}` | Edita presupuesto propio |
-| `DELETE` | `/api/v1/budgets/{id}` | Elimina presupuesto propio |
-| `GET` | `/api/v1/dashboard/monthly` | Resumen mensual de ingresos, gastos y presupuestos |
-| `GET` | `/api/v1/statements` | Lista PDFs subidos por el usuario |
-| `GET` | `/api/v1/statements/previews` | Lista previews pendientes del usuario |
-| `POST` | `/api/v1/statements/preview` | Sube PDF, parsea fallback y guarda preview pendiente |
-| `GET` | `/api/v1/statements/previews/{id}` | Obtiene un preview propio |
-| `POST` | `/api/v1/statements/previews/{id}/confirm` | Confirma preview e importa transacciones |
-| `POST` | `/api/v1/statements/previews/{id}/cancel` | Cancela preview pendiente |
-| `GET` | `/api/v1/statements/history/{id}` | Detalle de una cartola importada y sus transacciones |
-| `POST` | `/api/v1/statements/history/{id}/reprocess` | Reprocesa una cartola importada |
-| `POST` | `/api/v1/statements/upload` | Sube PDF y aplica parser fallback básico |
+> `INTERNAL_API_URL` solo aplica al frontend (Next.js reescribe `/api/*` hacia el backend). Las demás aplican al backend / Postgres.
+
+---
+
+## Levantar en local (sin Docker)
+
+Requiere un PostgreSQL 16 ya corriendo y accesible. Crea la base de datos vacía antes de empezar.
+
+```bash
+# 0. Base de datos (una sola vez)
+createdb finanzas            # o: psql -c "CREATE DATABASE finanzas;"
+
+# 1. Backend
+cd backend
+cp ../.env.example .env       # ajusta DATABASE_URL para apuntar a localhost:5432
+uv sync                       # instala dependencias (incluye grupo dev)
+uv run alembic upgrade head   # aplica migraciones
+uv run python -m app.scripts.seed   # crea admin + instituciones + categorías
+uv run uvicorn app.main:app --reload --port 8000
+# Backend listo en http://localhost:8000  ·  Swagger en http://localhost:8000/docs
+
+# 2. Frontend (en otra terminal)
+cd frontend
+npm install
+INTERNAL_API_URL=http://localhost:8000 npm run dev
+# Frontend listo en http://localhost:3000
+```
+
+> En local el frontend corre en el puerto **3000** (Next.js dev). En Docker se expone en **1510**.
+
+---
+
+## Levantar con Docker
+
+```bash
+# 1. Preparar entorno
+cp .env.example .env
+#    Editar .env y cambiar SECRET_KEY:  openssl rand -hex 32
+
+# 2. Build + arranque (en segundo plano)
+docker compose up --build -d
+
+# 3. Ver logs en vivo (Ctrl-C para salir, los servicios siguen corriendo)
+docker compose logs -f
+
+# 4. Detener y eliminar contenedores (conserva los datos)
+docker compose down
+
+# 4b. Detener y BORRAR volúmenes (resetea la base de datos)
+docker compose down -v
+```
+
+El `entrypoint.sh` del backend espera a Postgres, aplica migraciones Alembic y ejecuta el seed automáticamente.
+
+| Servicio     | URL                          |
+| ------------ | ---------------------------- |
+| Frontend     | http://localhost:1510        |
+| Backend API  | http://localhost:8000        |
+| Swagger Docs | http://localhost:8000/docs   |
+| PostgreSQL   | localhost:5432               |
+
+Atajos equivalentes vía `make`: `make build`, `make up`, `make down`, `make logs`, `make reset-db`, `make shell-backend`, `make shell-db`.
+
+---
+
+## Scripts disponibles
+
+**Frontend (`frontend/`, vía `npm run <script>`):**
+
+| Comando             | Descripción                              | Cuándo usarlo                                     |
+| ------------------- | ---------------------------------------- | ------------------------------------------------- |
+| `dev`               | Servidor de desarrollo con hot-reload    | Día a día desarrollando la UI                     |
+| `build`             | Build de producción optimizado           | Antes de desplegar / dentro del Dockerfile        |
+| `start`             | Sirve el build de producción             | Probar localmente el resultado de `build`         |
+| `lint`              | ESLint sobre `src/**/*.{ts,tsx}`         | Antes de commitear o en CI                        |
+| `typecheck`         | `tsc --noEmit` (verificación de tipos)   | Validar tipos sin emitir JS; en CI                |
+
+**Backend (`backend/`, vía `uv run <cmd>`):**
+
+| Comando                              | Descripción                                  | Cuándo usarlo                          |
+| ------------------------------------ | -------------------------------------------- | -------------------------------------- |
+| `uvicorn app.main:app --reload`      | Servidor de desarrollo (equivalente a `dev`) | Desarrollar la API con recarga         |
+| `uvicorn app.main:app`               | Servidor sin recarga (equivalente a `start`) | Ejecución estable / producción         |
+| `pytest`                             | Ejecuta la suite de tests (`test`)           | Antes de commitear o en CI             |
+| `alembic upgrade head`               | Aplica migraciones de BD                     | Tras clonar o crear nuevas migraciones |
+| `python -m app.scripts.seed`         | Crea admin + instituciones + categorías      | Primera inicialización de la BD        |
+
+> El backend no usa un comando `build` propio (Python no transpila); el "build" ocurre al construir la imagen Docker (`uv sync`).
+
+**Tests:** por defecto corren contra **SQLite en memoria** (sin necesidad de Postgres). Para correrlos contra Postgres:
+
+```bash
+cd backend
+uv run pytest                                   # SQLite en memoria (por defecto)
+TEST_DATABASE_URL=postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas_test \
+  uv run pytest                                 # contra Postgres
+```
+
+---
 
 ## Estructura del proyecto
 
 ```
-├── docker-compose.yml
-├── Makefile
-├── .env.example
-├── backend/
-│   ├── Dockerfile
-│   ├── entrypoint.sh
-│   ├── pyproject.toml
-│   ├── alembic.ini
-│   ├── alembic/
-│   │   └── versions/
+.
+├── docker-compose.yml          # Orquesta postgres + backend + frontend
+├── Makefile                    # Atajos de Docker Compose
+├── .env.example                # Plantilla de variables de entorno
+├── AGENTS.md                   # Convenciones y restricciones del proyecto
+├── backend/                    # API FastAPI
+│   ├── Dockerfile              # Imagen Python 3.12 + Tesseract + uv
+│   ├── entrypoint.sh           # Espera DB → migra → seed → arranca uvicorn
+│   ├── pyproject.toml          # Dependencias y config de pytest
+│   ├── alembic.ini             # Config de Alembic
+│   ├── alembic/                # Entorno + migraciones de esquema
+│   │   └── versions/           # 0001 esquema, 0002 previews, 0003 tx.user_id, 0004 cat.user_id
+│   ├── tests/                  # Tests de auth, cuentas, transacciones, budgets, parser
 │   └── app/
-│       ├── main.py
-│       ├── core/
-│       │   ├── config.py
-│       │   ├── database.py
-│       │   └── security.py
-│       ├── models/
-│       │   ├── user.py
-│       │   ├── account.py
-│       │   ├── institution.py
-│       │   ├── category.py
-│       │   ├── category_rule.py
-│       │   ├── transaction.py
-│       │   ├── transaction_tag.py
-│       │   ├── tag.py
-│       │   ├── budget.py
-│       │   ├── uploaded_file.py
-│       │   └── mixins.py
-│       └── scripts/
-│           ├── bootstrap.py
-│           └── seed.py
-└── frontend/
-    ├── Dockerfile
-    ├── package.json
-    ├── tsconfig.json
-    ├── next.config.mjs
-    ├── tailwind.config.ts
+│       ├── main.py             # create_app(): CORS, routers, /health
+│       ├── core/               # config (settings), database (engine/session), security (JWT/bcrypt)
+│       ├── models/             # Modelos SQLAlchemy (user, account, transaction, budget, ...)
+│       ├── modules/            # Un paquete por dominio: router + schemas (Pydantic)
+│       │   ├── auth/           # Login, refresh, logout, me, register (cookies HttpOnly)
+│       │   ├── accounts/       # CRUD de cuentas + instituciones
+│       │   ├── categories/     # Categorías (defaults del sistema + propias por usuario)
+│       │   ├── tags/           # Tags por usuario
+│       │   ├── rules/          # Reglas de auto-categorización
+│       │   ├── transactions/   # CRUD + auto-categorizar + export Excel
+│       │   ├── budgets/        # Presupuestos mensuales por categoría
+│       │   ├── dashboard/      # Resumen mensual (ingresos/gastos/presupuestos)
+│       │   └── statements/     # Upload PDF, parser, preview, confirmación, historial
+│       └── scripts/            # bootstrap (migra+seed) y seed (admin/instituciones/categorías)
+└── frontend/                   # App Next.js 15
+    ├── Dockerfile              # Build multi-stage → output standalone
+    ├── package.json            # Scripts y dependencias
+    ├── tsconfig.json           # TypeScript strict, alias @/*
+    ├── next.config.mjs         # output standalone + rewrite /api/* → backend
+    ├── tailwind.config.ts      # Configuración de Tailwind
     └── src/
-        ├── app/
-        │   ├── layout.tsx
-        │   └── page.tsx
-        ├── lib/
-        │   └── query-client.tsx
-        └── styles/
-            └── globals.css
+        ├── middleware.ts       # Protege rutas según cookies de sesión
+        ├── app/                # Rutas App Router: (auth)/login y (dashboard)/*
+        ├── components/         # Componentes (bóveda, statements)
+        ├── lib/                # api.ts (cliente axios), api-types.ts, query-client
+        ├── stores/             # Estado Zustand (auth)
+        └── styles/             # globals.css (Tailwind)
 ```
 
-## Modelo de datos
+---
 
-```
-User (1) ──< (N) Account ──< (N) UploadedFile ──< (N) Transaction
-User (1) ──< (N) CategoryRule              Transaction >── (N) TransactionTag ──< (N) Tag
-User (1) ──< (N) Budget                                               User (1) ──< (N) Tag
-User (1) ──< (N) UploadedFile
-                                                                                Category (1) ──< (N) Category (self-referential tree)
-Account (N) >── (1) Institution                                            Category (1) ──< (N) Transaction
-Category (1) ──< (N) CategoryRule                                          Category (1) ──< (N) Budget
+## Limitaciones conocidas
+
+1. **Sesiones JWT sin revocación.** Los tokens son JWT firmados (HS256) en cookies HttpOnly; no hay blacklist ni almacenamiento de sesiones, así que un token robado es válido hasta expirar y `logout` solo borra la cookie del cliente. Es una decisión de diseño de la v1 (sin Redis/almacén de sesiones, según `AGENTS.md`).
+2. **`SECRET_KEY` y credenciales por defecto inseguras.** Los valores de `.env.example` (`SECRET_KEY`, `ADMIN_PASSWORD=admin123`, password de Postgres) son solo para desarrollo y deben cambiarse antes de exponer la app.
+3. **Parsers bancarios sin validación contra cartolas reales.** La detección de banco (Itaú, BICE, Prex, UglyCash, TD Bank, Schwab, Alpaca) y los parsers se validan solo con fixtures sintéticos; requieren ajuste con PDFs reales por institución.
+4. **OCR dependiente del entorno.** El fallback OCR necesita Tesseract con idioma español instalado; fuera de Docker hay que instalarlo manualmente o el parsing de PDFs escaneados fallará.
+5. **Seed sin locking.** El seed de bootstrap no usa bloqueo; en arranques concurrentes de múltiples instancias podría haber una race condition (improbable en despliegue single-instance).
+6. **`COOKIE_SECURE=false` por defecto.** En producción con HTTPS debe ponerse en `true` para evitar envío de cookies sobre conexiones no cifradas.
+7. **Sin tests de frontend.** Solo el backend tiene suite de tests; el frontend se valida con `lint` y `typecheck`, sin pruebas unitarias ni e2e.
+
+> **Categorías**: ahora hay aislamiento por usuario. Las categorías sembradas son del sistema (compartidas, `user_id` NULL, solo lectura) y cada usuario puede crear/editar/eliminar únicamente las suyas. Otros usuarios no pueden ver ni referenciar categorías privadas ajenas.
 ```

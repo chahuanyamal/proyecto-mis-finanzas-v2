@@ -18,7 +18,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Se añade nullable para poder rellenar filas existentes antes de exigir
+    # NOT NULL.
     op.add_column("transactions", sa.Column("user_id", UUID, nullable=True))
+    # Backfill: cada transacción hereda el dueño de su cuenta.
+    op.execute(
+        "UPDATE transactions SET user_id = accounts.user_id "
+        "FROM accounts WHERE transactions.account_id = accounts.id "
+        "AND transactions.user_id IS NULL"
+    )
     op.create_index(op.f("ix_transactions_user_id"), "transactions", ["user_id"])
     op.create_foreign_key(
         "fk_transactions_user_id_users",
@@ -28,6 +36,8 @@ def upgrade() -> None:
         ["id"],
         ondelete="CASCADE",
     )
+    # El modelo declara user_id obligatorio; reflejarlo en el esquema.
+    op.alter_column("transactions", "user_id", nullable=False)
 
 
 def downgrade() -> None:

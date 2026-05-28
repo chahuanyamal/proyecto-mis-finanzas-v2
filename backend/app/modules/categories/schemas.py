@@ -21,6 +21,7 @@ class CategoryUpdate(BaseModel):
 
 class CategoryOut(BaseModel):
     id: uuid.UUID
+    user_id: uuid.UUID | None
     name: str
     parent_id: uuid.UUID | None
     color: str | None
@@ -28,6 +29,6 @@ class CategoryOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @field_serializer("id", "parent_id")
+    @field_serializer("id", "parent_id", "user_id")
     def serialize_uuid(self, value: uuid.UUID | None) -> str | None:
         return str(value) if value is not None else None

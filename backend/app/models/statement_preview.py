@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import JSON, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,7 +20,9 @@ class StatementPreview(Base, TimestampMixin):
     stored_filename: Mapped[str] = mapped_column(String(700), nullable=False)
     bank_detected: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
-    rows: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    rows: Mapped[list] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=False, default=list
+    )
 
     account = relationship("Account")
     user = relationship("User")

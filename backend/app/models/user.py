@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import String
+from sqlalchemy import JSON, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,7 +23,9 @@ class User(Base, TimestampMixin):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(default=False, nullable=False)
-    preferences: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    preferences: Mapped[dict | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), default=dict
+    )
 
     accounts = relationship("Account", back_populates="user")
     uploaded_files = relationship("UploadedFile", back_populates="uploaded_by")
