@@ -140,3 +140,19 @@ export interface MonthlyDashboard {
     status: "ok" | "warning" | "exceeded";
   }>;
 }
+
+export interface StatementUpload {
+  id: string;
+  account_id: string;
+  user_id: string;
+  filename: string;
+  bank_detected: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  status: string;
+}
+
+export interface StatementUploadResponse {
+  uploaded_file: StatementUpload;
+  imported_transactions: number;
+}

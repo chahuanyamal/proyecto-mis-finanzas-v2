@@ -23,6 +23,7 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-finanzas}:${POSTGRES_PASSWORD:-finanzas}@postgres:5432/${POSTGRES_DB:-finanzas}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
       POSTGRES_USER: ${POSTGRES_USER:-finanzas}
       POSTGRES_DB: ${POSTGRES_DB:-finanzas}
       APP_ENV: ${APP_ENV:-development}
@@ -36,6 +37,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
     restart: unless-stopped
 
   frontend:
@@ -51,3 +54,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

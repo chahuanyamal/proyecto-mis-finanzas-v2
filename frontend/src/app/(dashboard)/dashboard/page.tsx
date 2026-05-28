@@ -55,7 +55,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="mt-6 flex flex-wrap gap-3 text-sm">
-            {[["/accounts", "Cuentas"], ["/transactions", "Transacciones"], ["/categories", "Categorías"], ["/tags", "Tags"], ["/rules", "Reglas"], ["/presupuestos", "Presupuestos"]].map(([path, label]) => (
+            {[["/accounts", "Cuentas"], ["/transactions", "Transacciones"], ["/categories", "Categorías"], ["/tags", "Tags"], ["/rules", "Reglas"], ["/presupuestos", "Presupuestos"], ["/statements", "Cartolas"]].map(([path, label]) => (
               <button key={path} type="button" onClick={() => router.push(path)} className="rounded border border-slate-700 px-3 py-2 hover:border-brand-400">{label}</button>
             ))}
           </div>

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
     DATABASE_URL: str = "postgresql+asyncpg://finanzas:finanzas@postgres:5432/finanzas"
+    UPLOAD_DIR: str = "/app/uploads"
 
     SECRET_KEY: str = "cambiar-en-produccion-secret-key-min-32-chars"
     JWT_ALGORITHM: str = "HS256"

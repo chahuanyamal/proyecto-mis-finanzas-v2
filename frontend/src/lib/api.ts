@@ -11,6 +11,8 @@ import type {
   Institution,
   LoginResponse,
   MonthlyDashboard,
+  StatementUpload,
+  StatementUploadResponse,
   Tag,
   TagPayload,
   Transaction,
@@ -115,6 +117,18 @@ export const budgetsApi = {
 
 export const dashboardApi = {
   monthly: (month: string) => api.get<MonthlyDashboard>("/v1/dashboard/monthly", { params: { month } }),
+};
+
+export const statementsApi = {
+  list: () => api.get<StatementUpload[]>("/v1/statements"),
+  upload: (accountId: string, file: File) => {
+    const data = new FormData();
+    data.append("file", file);
+    return api.post<StatementUploadResponse>("/v1/statements/upload", data, {
+      params: { account_id: accountId },
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
 };
 
 export default api;

@@ -130,13 +130,13 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 - [x] Presupuestos mensuales + página `/presupuestos`
 - [x] Dashboard mensual real (`/api/v1/dashboard/monthly`)
 - [x] Auto-categorización por reglas y exportación Excel de transacciones
-- [ ] Upload y parseo de PDF
-- [ ] Upload y parseo PDF con fallback real
+- [x] Upload PDF + parser fallback básico + historial `/statements`
+- [ ] Parsers bancarios específicos y preview/confirmación avanzada
 - [ ] Tests
 
 ## Limitaciones actuales
 
-- **API parcial.** Existen `/health`, autenticación, cuentas, categorías, tags, reglas, transacciones manuales, presupuestos, dashboard mensual, auto-categorización y export Excel. Falta migrar upload/parser PDF y reportes avanzados.
+- **API parcial.** Existen `/health`, autenticación, cuentas, categorías, tags, reglas, transacciones manuales, presupuestos, dashboard mensual, auto-categorización, export Excel y upload PDF con fallback básico. Falta migrar parsers bancarios específicos, preview/confirmación avanzada y reportes avanzados.
 - **Auth v1 simplificada.** Usa JWT en cookies HttpOnly, sin Redis ni blacklist de sesiones. Refresh token es JWT firmado, no persistido en BD.
 - **Frontend mínimo.** Login y dashboard autenticado funcionan, pero el dashboard aún es placeholder.
 - **Sin tests.** `pytest` y `pytest-asyncio` están en dependencias pero no hay archivos de test.
@@ -162,6 +162,7 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 | `JWT_ACCESS_EXPIRE_MINUTES` | `15`                                                  | Expiración access token             |
 | `JWT_REFRESH_EXPIRE_DAYS`   | `7`                                                    | Expiración refresh token            |
 | `COOKIE_SECURE`        | `false`                                                   | Cookies solo HTTPS (`true` en prod con TLS) |
+| `UPLOAD_DIR`           | `/app/uploads`                                            | Carpeta de PDFs subidos                     |
 | `ADMIN_EMAIL`          | `admin@finanzas.local`                                     | Email admin inicial                 |
 | `ADMIN_FULL_NAME`      | `Admin`                                                    | Nombre admin inicial                |
 | `ADMIN_PASSWORD`       | `admin123`                                                 | Password admin inicial              |
@@ -205,6 +206,8 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 | `PATCH` | `/api/v1/budgets/{id}` | Edita presupuesto propio |
 | `DELETE` | `/api/v1/budgets/{id}` | Elimina presupuesto propio |
 | `GET` | `/api/v1/dashboard/monthly` | Resumen mensual de ingresos, gastos y presupuestos |
+| `GET` | `/api/v1/statements` | Lista PDFs subidos por el usuario |
+| `POST` | `/api/v1/statements/upload` | Sube PDF y aplica parser fallback básico |
 
 ## Estructura del proyecto
 
