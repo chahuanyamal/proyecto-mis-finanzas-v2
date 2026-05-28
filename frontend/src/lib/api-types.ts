@@ -83,6 +83,15 @@ export interface CategoryRulePayload {
   priority: number;
 }
 
+export interface TransactionSplit {
+  id: string;
+  transaction_id: string;
+  category_id: string | null;
+  amount: string;
+  notes: string | null;
+  category: Category | null;
+}
+
 export interface Transaction {
   id: string;
   user_id: string;
@@ -94,8 +103,15 @@ export interface Transaction {
   amount: string;
   currency: string;
   movement_type: "income" | "expense";
+  notes: string | null;
+  is_flagged: boolean;
+  flag_reason: string | null;
+  is_internal_transfer: boolean;
+  is_duplicate: boolean;
   account: Account | null;
   category: Category | null;
+  tags: Tag[];
+  splits: TransactionSplit[];
 }
 
 export interface TransactionPayload {
@@ -106,6 +122,42 @@ export interface TransactionPayload {
   amount: string;
   currency: string;
   movement_type: Transaction["movement_type"];
+  notes?: string | null;
+}
+
+export interface SplitPayload {
+  category_id?: string | null;
+  amount: string;
+  notes?: string | null;
+}
+
+export interface TransactionSummary {
+  total_count: number;
+  uncategorized_count: number;
+  by_currency: Record<string, { income: string; expense: string; count: number }>;
+}
+
+export interface CategoryAggregate {
+  category_id: string | null;
+  category_name: string;
+  income: string;
+  expense: string;
+  count: number;
+}
+
+export interface MonthAggregate {
+  month: string;
+  income: string;
+  expense: string;
+}
+
+export interface RangeFilters {
+  account_id?: string;
+  start_date?: string;
+  end_date?: string;
+  currency?: string;
+  exclude_internal?: boolean;
+  exclude_duplicates?: boolean;
 }
 
 export interface Budget {
@@ -160,6 +212,11 @@ export interface StatementUploadResponse {
   possible_duplicates: string[];
 }
 
+export interface StatementDetail {
+  uploaded_file: StatementUpload;
+  transactions: Transaction[];
+}
+
 export interface PreviewRow {
   date: string;
   description: string;
@@ -184,4 +241,83 @@ export interface StatementPreview {
   status: string;
   rows: PreviewRow[];
   summary: PreviewSummary | null;
+}
+
+export interface TransactionFilters {
+  account_id?: string;
+  category_id?: string;
+  statement_id?: string;
+  start_date?: string;
+  end_date?: string;
+  movement_type?: "income" | "expense";
+  currency?: string;
+  search?: string;
+  only_uncategorized?: boolean;
+  only_flagged?: boolean;
+  exclude_internal?: boolean;
+  exclude_duplicates?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface Goal {
+  id: string;
+  user_id: string;
+  name: string;
+  target_amount: string;
+  current_amount: string;
+  currency: string;
+  target_date: string | null;
+  percent: number;
+}
+
+export interface GoalPayload {
+  name: string;
+  target_amount: string;
+  current_amount?: string;
+  currency?: string;
+  target_date?: string | null;
+}
+
+export type RecurringFrequency = "weekly" | "monthly" | "yearly";
+
+export interface Recurring {
+  id: string;
+  user_id: string;
+  category_id: string | null;
+  name: string;
+  amount: string;
+  currency: string;
+  frequency: RecurringFrequency;
+  movement_type: "income" | "expense";
+  next_date: string | null;
+  active: boolean;
+}
+
+export interface RecurringPayload {
+  name: string;
+  amount: string;
+  currency?: string;
+  frequency?: RecurringFrequency;
+  movement_type?: "income" | "expense";
+  category_id?: string | null;
+  next_date?: string | null;
+  active?: boolean;
+}
+
+export interface NetWorth {
+  accounts: Array<{ id: string; name: string; account_type: string; currency: string; balance: string }>;
+  totals_by_currency: Array<{ currency: string; total: string }>;
+  account_count: number;
+}
+
+export interface Settings {
+  email: string;
+  full_name: string;
+  preferences: Record<string, unknown> | null;
+}
+
+export interface SettingsPayload {
+  full_name?: string;
+  preferences?: Record<string, unknown>;
 }

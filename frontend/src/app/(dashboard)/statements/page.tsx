@@ -6,8 +6,15 @@ import type { StatementPreview } from "@/lib/api-types";
 import StatementPreviewCard from "@/components/statements/StatementPreviewCard";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2, Upload } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+
+function monthLabel(s: StatementUpload): string {
+  const ref = s.period_end ?? s.period_start;
+  if (!ref) return "Sin período";
+  return new Date(`${ref}T00:00:00`).toLocaleDateString("es-CL", { month: "long", year: "numeric" });
+}
 
 export default function StatementsPage() {
   const router = useRouter();
@@ -61,6 +68,18 @@ export default function StatementsPage() {
     await loadData();
   }
 
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of statements) counts[s.status] = (counts[s.status] ?? 0) + 1;
+    return counts;
+  }, [statements]);
+
+  const byMonth = useMemo(() => {
+    const map = new Map<string, StatementUpload[]>();
+    for (const s of statements) { const k = monthLabel(s); if (!map.has(k)) map.set(k, []); map.get(k)!.push(s); }
+    return [...map.entries()];
+  }, [statements]);
+
   return (
     <main className="min-h-screen bg-surface-950 p-8 text-slate-100">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -113,29 +132,52 @@ export default function StatementsPage() {
         </section>
 
         <section className="rounded-lg border border-slate-800 bg-surface-900 p-6">
-          <h2 className="text-lg font-semibold">Historial</h2>
-          <div className="mt-4 space-y-3">
-            {statements.map((s) => (
-              <div key={s.id} className="rounded border border-slate-800 bg-black/30 p-4">
-                <div className="flex flex-wrap justify-between gap-3">
-                  <span className="font-medium">{s.filename}</span>
-                  <span className="text-sm text-slate-400">
-                    {s.status}
-                    {s.period_start && s.period_end
-                      ? ` · ${s.period_start} → ${s.period_end}`
-                      : ""}
-                  </span>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Historial</h2>
+            <span className="text-xs text-slate-500">{statements.length} cartola(s)</span>
+          </div>
+
+          {statements.length > 0 ? (
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                { key: "processed", label: "Importadas", tone: "text-emerald-300" },
+                { key: "pending", label: "Pendientes", tone: "text-amber-300" },
+                { key: "error", label: "Con error", tone: "text-red-300" },
+                { key: "cancelled", label: "Canceladas", tone: "text-slate-400" },
+              ].map((c) => (
+                <div key={c.key} className="rounded border border-slate-800 bg-black/30 p-3">
+                  <p className="text-[10px] uppercase tracking-widest text-slate-500">{c.label}</p>
+                  <p className={`mt-1 text-xl font-bold ${c.tone}`}>{statusCounts[c.key] ?? 0}</p>
                 </div>
-                <div className="mt-2 text-xs text-slate-500">
-                  {s.bank_detected ? `Banco: ${s.bank_detected}` : ""}
-                </div>
-                <div className="mt-3">
-                  <button
-                    className="rounded bg-slate-700 px-3 py-1 text-sm text-slate-300 hover:bg-slate-600"
-                    onClick={() => reprocess(s.id)}
-                  >
-                    Reprocesar
-                  </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-5 space-y-5">
+            {byMonth.map(([month, items]) => (
+              <div key={month}>
+                <p className="mb-2 text-xs uppercase tracking-wider text-slate-500">{month} · {items.length}</p>
+                <div className="space-y-2">
+                  {items.map((s) => (
+                    <Link key={s.id} href={`/statements/${s.id}`} className="block rounded border border-slate-800 bg-black/30 p-4 hover:border-brand-500/50 hover:bg-white/5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span className="break-all font-medium">{s.filename}</span>
+                        <span className="text-sm text-slate-400">
+                          {s.status}
+                          {s.period_start && s.period_end ? ` · ${s.period_start} → ${s.period_end}` : ""}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-xs text-slate-500">{s.bank_detected ? `Banco: ${s.bank_detected}` : ""}</span>
+                        <button
+                          className="rounded bg-slate-700 px-3 py-1 text-xs text-slate-300 hover:bg-slate-600"
+                          onClick={(e) => { e.preventDefault(); void reprocess(s.id); }}
+                        >
+                          Reprocesar
+                        </button>
+                      </div>
+                    </Link>
+                  ))}
                 </div>
               </div>
             ))}

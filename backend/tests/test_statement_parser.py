@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import datetime
+from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -72,6 +75,46 @@ def test_parse_statement_pdf_includes_bank_and_extraction_method(monkeypatch: py
 
     assert result["bank_detected"] == "bice:ocr"
     assert result["extraction_method"] == "ocr"
+    assert result["rows"][0]["amount"] == "15990"
+
+
+def test_rows_from_result_maps_credit_debit_to_income_expense() -> None:
+    # Los parsers bancarios dedicados usan credit/debit y montos positivos;
+    # la v2 espera income/expense. Este mapeo es el puente entre ambos.
+    result = SimpleNamespace(transactions=[
+        {"date": datetime.date(2026, 5, 1), "original_description": "Sueldo", "amount": Decimal("1250000"), "movement_type": "credit"},
+        {"date": datetime.date(2026, 5, 2), "original_description": "Supermercado", "amount": Decimal("12500"), "movement_type": "debit"},
+        {"date": datetime.date(2026, 5, 3), "original_description": "Reverso", "amount": Decimal("-300"), "movement_type": "debit"},
+    ])
+
+    rows = parser._rows_from_result(result)
+
+    assert rows == [
+        {"date": "2026-05-01", "description": "Sueldo", "amount": "1250000", "movement_type": "income"},
+        {"date": "2026-05-02", "description": "Supermercado", "amount": "12500", "movement_type": "expense"},
+        {"date": "2026-05-03", "description": "Reverso", "amount": "300", "movement_type": "expense"},
+    ]
+
+
+def test_rows_from_result_skips_incomplete_rows() -> None:
+    result = SimpleNamespace(transactions=[
+        {"date": None, "original_description": "sin fecha", "amount": Decimal("100"), "movement_type": "debit"},
+        {"date": datetime.date(2026, 5, 1), "original_description": "sin monto", "amount": None, "movement_type": "debit"},
+    ])
+
+    assert parser._rows_from_result(result) == []
+
+
+def test_short_text_skips_registry_and_uses_simple_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Texto corto (fixtures/tests) → ruta simple determinística, sin registry.
+    monkeypatch.setattr(parser, "_extract_text", lambda _p: ("Banco BICE\n03-05-2026 Restaurante 15.990 - 100.000", "text"))
+
+    def _boom(*_args: object, **_kwargs: object) -> object:  # pragma: no cover
+        raise AssertionError("el registry no debe usarse con texto corto")
+
+    monkeypatch.setattr(parser, "_parse_with_registry", lambda *a, **k: None)
+    result = parser.parse_statement_pdf(Path("cartola.pdf"))
+    assert result["bank_detected"] == "bice:text"
     assert result["rows"][0]["amount"] == "15990"
 
 

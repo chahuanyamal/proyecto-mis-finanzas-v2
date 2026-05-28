@@ -1,7 +1,7 @@
 """revoked tokens (jti denylist)
 
 Revision ID: 0005_revoked_tokens
-Revises: 0004_add_user_id_to_categories
+Revises: 0005_transaction_parity
 Create Date: 2026-05-28 00:00:02.000000
 """
 
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision: str = "0005_revoked_tokens"
-down_revision: Union[str, None] = "0004_add_user_id_to_categories"
+down_revision: Union[str, None] = "0005_transaction_parity"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -14,7 +14,11 @@ from app.modules.auth.router import router as auth_router
 from app.modules.budgets.router import router as budgets_router
 from app.modules.categories.router import router as categories_router
 from app.modules.dashboard.router import router as dashboard_router
+from app.modules.goals.router import router as goals_router
+from app.modules.patrimonio.router import router as patrimonio_router
+from app.modules.recurring.router import router as recurring_router
 from app.modules.rules.router import router as rules_router
+from app.modules.settings.router import router as settings_router
 from app.modules.statements.router import router as statements_router
 from app.modules.tags.router import router as tags_router
 from app.modules.transactions.router import router as transactions_router
@@ -51,6 +55,10 @@ def create_app() -> FastAPI:
     app.include_router(rules_router)
     app.include_router(statements_router)
     app.include_router(transactions_router)
+    app.include_router(goals_router)
+    app.include_router(recurring_router)
+    app.include_router(patrimonio_router)
+    app.include_router(settings_router)
 
     @app.get("/health")
     async def health():
