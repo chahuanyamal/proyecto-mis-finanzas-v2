@@ -180,7 +180,7 @@ TEST_DATABASE_URL=postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas
 │   ├── pyproject.toml          # Dependencias y config de pytest
 │   ├── alembic.ini             # Config de Alembic
 │   ├── alembic/                # Entorno + migraciones de esquema
-│   │   └── versions/           # 0001 esquema inicial, 0002 previews, 0003 user_id
+│   │   └── versions/           # 0001 esquema, 0002 previews, 0003 tx.user_id, 0004 cat.user_id
 │   ├── tests/                  # Tests de auth, cuentas, transacciones, budgets, parser
 │   └── app/
 │       ├── main.py             # create_app(): CORS, routers, /health
@@ -189,7 +189,7 @@ TEST_DATABASE_URL=postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas
 │       ├── modules/            # Un paquete por dominio: router + schemas (Pydantic)
 │       │   ├── auth/           # Login, refresh, logout, me, register (cookies HttpOnly)
 │       │   ├── accounts/       # CRUD de cuentas + instituciones
-│       │   ├── categories/     # Catálogo de categorías (árbol, compartido)
+│       │   ├── categories/     # Categorías (defaults del sistema + propias por usuario)
 │       │   ├── tags/           # Tags por usuario
 │       │   ├── rules/          # Reglas de auto-categorización
 │       │   ├── transactions/   # CRUD + auto-categorizar + export Excel
@@ -216,13 +216,13 @@ TEST_DATABASE_URL=postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas
 
 ## Limitaciones conocidas
 
-1. **Categorías globales sin aislamiento por usuario.** El catálogo de categorías es compartido y no tiene `user_id`; cualquier usuario autenticado puede crear, editar o eliminar categorías que afectan a todos. Aceptable para uso personal/single-tenant, no para multi-tenant real.
-2. **Sesiones JWT sin revocación.** Los tokens son JWT firmados (HS256) en cookies HttpOnly; no hay blacklist ni almacenamiento de sesiones, así que un token robado es válido hasta expirar y `logout` solo borra la cookie del cliente.
-3. **`SECRET_KEY` y credenciales por defecto inseguras.** Los valores de `.env.example` (`SECRET_KEY`, `ADMIN_PASSWORD=admin123`, password de Postgres) son solo para desarrollo y deben cambiarse antes de exponer la app.
-4. **Parsers bancarios sin validación contra cartolas reales.** La detección de banco (Itaú, BICE, Prex, UglyCash, TD Bank, Schwab, Alpaca) y los parsers se validan solo con fixtures sintéticos; requieren ajuste con PDFs reales por institución.
-5. **OCR dependiente del entorno.** El fallback OCR necesita Tesseract con idioma español instalado; fuera de Docker hay que instalarlo manualmente o el parsing de PDFs escaneados fallará.
-6. **Seed sin locking.** El seed de bootstrap no usa bloqueo; en arranques concurrentes de múltiples instancias podría haber una race condition (improbable en despliegue single-instance).
-7. **`COOKIE_SECURE=false` por defecto.** En producción con HTTPS debe ponerse en `true` para evitar envío de cookies sobre conexiones no cifradas.
-8. **Sin tests de frontend.** Solo el backend tiene suite de tests; el frontend se valida con `lint` y `typecheck`, sin pruebas unitarias ni e2e.
-9. **Migración 0003 con `user_id` nullable.** La columna `transactions.user_id` se añadió como nullable en la migración aunque el modelo la declara obligatoria; la app siempre la setea, pero el esquema permite nulos a nivel de BD.
+1. **Sesiones JWT sin revocación.** Los tokens son JWT firmados (HS256) en cookies HttpOnly; no hay blacklist ni almacenamiento de sesiones, así que un token robado es válido hasta expirar y `logout` solo borra la cookie del cliente. Es una decisión de diseño de la v1 (sin Redis/almacén de sesiones, según `AGENTS.md`).
+2. **`SECRET_KEY` y credenciales por defecto inseguras.** Los valores de `.env.example` (`SECRET_KEY`, `ADMIN_PASSWORD=admin123`, password de Postgres) son solo para desarrollo y deben cambiarse antes de exponer la app.
+3. **Parsers bancarios sin validación contra cartolas reales.** La detección de banco (Itaú, BICE, Prex, UglyCash, TD Bank, Schwab, Alpaca) y los parsers se validan solo con fixtures sintéticos; requieren ajuste con PDFs reales por institución.
+4. **OCR dependiente del entorno.** El fallback OCR necesita Tesseract con idioma español instalado; fuera de Docker hay que instalarlo manualmente o el parsing de PDFs escaneados fallará.
+5. **Seed sin locking.** El seed de bootstrap no usa bloqueo; en arranques concurrentes de múltiples instancias podría haber una race condition (improbable en despliegue single-instance).
+6. **`COOKIE_SECURE=false` por defecto.** En producción con HTTPS debe ponerse en `true` para evitar envío de cookies sobre conexiones no cifradas.
+7. **Sin tests de frontend.** Solo el backend tiene suite de tests; el frontend se valida con `lint` y `typecheck`, sin pruebas unitarias ni e2e.
+
+> **Categorías**: ahora hay aislamiento por usuario. Las categorías sembradas son del sistema (compartidas, `user_id` NULL, solo lectura) y cada usuario puede crear/editar/eliminar únicamente las suyas. Otros usuarios no pueden ver ni referenciar categorías privadas ajenas.
 ```

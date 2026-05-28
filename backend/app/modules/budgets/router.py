@@ -9,18 +9,12 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.models.budget import Budget
-from app.models.category import Category
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
 from app.modules.budgets.schemas import BudgetCreate, BudgetOut, BudgetUpdate
+from app.modules.categories.service import ensure_category_visible
 
 router = APIRouter(prefix="/api/v1/budgets", tags=["budgets"])
-
-
-async def _category_or_404(category_id: uuid.UUID, db: AsyncSession) -> None:
-    result = await db.execute(select(Category.id).where(Category.id == category_id))
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Categoría no encontrada")
 
 
 async def _budget_or_404(budget_id: uuid.UUID, db: AsyncSession, current_user: User) -> Budget:
@@ -59,7 +53,7 @@ async def create_budget(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Budget:
-    await _category_or_404(body.category_id, db)
+    await ensure_category_visible(body.category_id, db, current_user.id)
     existing = await db.execute(
         select(Budget.id).where(
             Budget.user_id == current_user.id,

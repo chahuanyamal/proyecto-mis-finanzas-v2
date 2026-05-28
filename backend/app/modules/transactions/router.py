@@ -13,12 +13,12 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.models.account import Account
-from app.models.category import Category
 from app.models.category_rule import CategoryRule
 from app.models.transaction import Transaction
 from app.models.uploaded_file import UploadedFile
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
+from app.modules.categories.service import ensure_category_visible
 from app.modules.transactions.schemas import TransactionCreate, TransactionOut, TransactionUpdate
 
 router = APIRouter(prefix="/api/v1/transactions", tags=["transactions"])
@@ -41,14 +41,6 @@ async def _account_or_404(account_id: uuid.UUID, db: AsyncSession, current_user:
     if account is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuenta no encontrada")
     return account
-
-
-async def _category_or_404(category_id: uuid.UUID | None, db: AsyncSession) -> None:
-    if category_id is None:
-        return
-    result = await db.execute(select(Category.id).where(Category.id == category_id))
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Categoría no encontrada")
 
 
 async def _transaction_or_404(transaction_id: uuid.UUID, db: AsyncSession, current_user: User) -> Transaction:
@@ -200,7 +192,7 @@ async def create_transaction(
     current_user: User = Depends(get_current_user),
 ) -> Transaction:
     account = await _account_or_404(body.account_id, db, current_user)
-    await _category_or_404(body.category_id, db)
+    await ensure_category_visible(body.category_id, db, current_user.id)
     uploaded_file = await _manual_uploaded_file(account, db, current_user)
     transaction = Transaction(uploaded_file_id=uploaded_file.id, user_id=current_user.id, **body.model_dump())
     db.add(transaction)
@@ -227,7 +219,7 @@ async def update_transaction(
     if "account_id" in changes and changes["account_id"] is not None:
         await _account_or_404(changes["account_id"], db, current_user)
     if "category_id" in changes:
-        await _category_or_404(changes["category_id"], db)
+        await ensure_category_visible(changes["category_id"], db, current_user.id)
     for field, value in changes.items():
         setattr(transaction, field, value)
     await db.commit()
