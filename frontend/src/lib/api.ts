@@ -8,8 +8,11 @@ import type {
   CategoryRulePayload,
   Budget,
   BudgetPayload,
+  CategoryAggregate,
   Goal,
   GoalPayload,
+  MonthAggregate,
+  RangeFilters,
   Institution,
   LoginResponse,
   MonthlyDashboard,
@@ -133,6 +136,10 @@ export const transactionsApi = {
     api.patch<{ updated: number }>("/v1/transactions/bulk/tags", { transaction_ids, tag_ids }),
   bulkDelete: (transaction_ids: string[]) =>
     api.delete<{ deleted: number }>("/v1/transactions/bulk", { data: { transaction_ids } }),
+  byCategory: (filters?: RangeFilters) =>
+    api.get<CategoryAggregate[]>("/v1/transactions/by-category", { params: filters }),
+  byMonth: (params?: { months?: number; account_id?: string; currency?: string }) =>
+    api.get<MonthAggregate[]>("/v1/transactions/by-month", { params }),
   exportExcelUrl: () => "/api/v1/transactions/export/excel",
   exportCsvUrl: () => "/api/v1/transactions/export/csv",
 };

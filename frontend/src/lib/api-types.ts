@@ -135,6 +135,29 @@ export interface TransactionSummary {
   by_currency: Record<string, { income: string; expense: string; count: number }>;
 }
 
+export interface CategoryAggregate {
+  category_id: string | null;
+  category_name: string;
+  income: string;
+  expense: string;
+  count: number;
+}
+
+export interface MonthAggregate {
+  month: string;
+  income: string;
+  expense: string;
+}
+
+export interface RangeFilters {
+  account_id?: string;
+  start_date?: string;
+  end_date?: string;
+  currency?: string;
+  exclude_internal?: boolean;
+  exclude_duplicates?: boolean;
+}
+
 export interface Budget {
   id: string;
   user_id: string;
