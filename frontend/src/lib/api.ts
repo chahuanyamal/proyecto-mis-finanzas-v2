@@ -8,16 +8,24 @@ import type {
   CategoryRulePayload,
   Budget,
   BudgetPayload,
+  Goal,
+  GoalPayload,
   Institution,
   LoginResponse,
   MonthlyDashboard,
+  NetWorth,
   PreviewRow,
+  Recurring,
+  RecurringPayload,
+  Settings,
+  SettingsPayload,
   StatementUpload,
   StatementPreview,
   StatementUploadResponse,
   Tag,
   TagPayload,
   Transaction,
+  TransactionFilters,
   TransactionPayload,
   User,
 } from "@/lib/api-types";
@@ -101,7 +109,8 @@ export const rulesApi = {
 };
 
 export const transactionsApi = {
-  list: () => api.get<Transaction[]>("/v1/transactions"),
+  list: (filters?: TransactionFilters) =>
+    api.get<Transaction[]>("/v1/transactions", { params: filters }),
   create: (payload: TransactionPayload) => api.post<Transaction>("/v1/transactions", payload),
   update: (id: string, payload: Partial<TransactionPayload>) => api.patch<Transaction>(`/v1/transactions/${id}`, payload),
   remove: (id: string) => api.delete(`/v1/transactions/${id}`),
@@ -119,6 +128,29 @@ export const budgetsApi = {
 
 export const dashboardApi = {
   monthly: (month: string) => api.get<MonthlyDashboard>("/v1/dashboard/monthly", { params: { month } }),
+};
+
+export const goalsApi = {
+  list: () => api.get<Goal[]>("/v1/goals"),
+  create: (payload: GoalPayload) => api.post<Goal>("/v1/goals", payload),
+  update: (id: string, payload: Partial<GoalPayload>) => api.patch<Goal>(`/v1/goals/${id}`, payload),
+  remove: (id: string) => api.delete(`/v1/goals/${id}`),
+};
+
+export const recurringApi = {
+  list: () => api.get<Recurring[]>("/v1/recurring"),
+  create: (payload: RecurringPayload) => api.post<Recurring>("/v1/recurring", payload),
+  update: (id: string, payload: Partial<RecurringPayload>) => api.patch<Recurring>(`/v1/recurring/${id}`, payload),
+  remove: (id: string) => api.delete(`/v1/recurring/${id}`),
+};
+
+export const patrimonioApi = {
+  get: () => api.get<NetWorth>("/v1/patrimonio"),
+};
+
+export const settingsApi = {
+  get: () => api.get<Settings>("/v1/settings"),
+  update: (payload: SettingsPayload) => api.patch<Settings>("/v1/settings", payload),
 };
 
 export const statementsApi = {

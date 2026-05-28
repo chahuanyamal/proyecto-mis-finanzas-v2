@@ -5,15 +5,30 @@ export type BovedaNavItem = { href: string; label: string };
 export type BovedaNavGroup = { section: string; items: BovedaNavItem[] };
 
 export const BOVEDA_NAV: BovedaNavGroup[] = [
-  { section: "Resumen", items: [{ href: "/dashboard", label: "Tablero" }] },
+  {
+    section: "Resumen",
+    items: [
+      { href: "/dashboard", label: "Tablero" },
+      { href: "/patrimonio", label: "Patrimonio" },
+      { href: "/comparar", label: "Comparar" },
+    ],
+  },
   {
     section: "Movimientos",
     items: [
       { href: "/transactions", label: "Movimientos" },
       { href: "/statements", label: "Cartolas" },
+      { href: "/review", label: "Por revisar" },
     ],
   },
-  { section: "Planificación", items: [{ href: "/presupuestos", label: "Presupuestos" }] },
+  {
+    section: "Planificación",
+    items: [
+      { href: "/presupuestos", label: "Presupuestos" },
+      { href: "/goals", label: "Metas" },
+      { href: "/recurring", label: "Recurrentes" },
+    ],
+  },
   {
     section: "Taxonomía",
     items: [
@@ -21,6 +36,21 @@ export const BOVEDA_NAV: BovedaNavGroup[] = [
       { href: "/categories", label: "Categorías" },
       { href: "/tags", label: "Etiquetas" },
       { href: "/rules", label: "Reglas" },
+    ],
+  },
+  {
+    section: "Análisis",
+    items: [
+      { href: "/insights", label: "Insights" },
+      { href: "/ai", label: "Asistente IA" },
+    ],
+  },
+  {
+    section: "Sistema",
+    items: [
+      { href: "/settings", label: "Ajustes" },
+      { href: "/admin", label: "Admin" },
+      { href: "/status", label: "Estado" },
     ],
   },
 ];

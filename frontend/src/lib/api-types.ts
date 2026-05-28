@@ -183,3 +183,75 @@ export interface StatementPreview {
   rows: PreviewRow[];
   summary: PreviewSummary | null;
 }
+
+export interface TransactionFilters {
+  account_id?: string;
+  category_id?: string;
+  start_date?: string;
+  end_date?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface Goal {
+  id: string;
+  user_id: string;
+  name: string;
+  target_amount: string;
+  current_amount: string;
+  currency: string;
+  target_date: string | null;
+  percent: number;
+}
+
+export interface GoalPayload {
+  name: string;
+  target_amount: string;
+  current_amount?: string;
+  currency?: string;
+  target_date?: string | null;
+}
+
+export type RecurringFrequency = "weekly" | "monthly" | "yearly";
+
+export interface Recurring {
+  id: string;
+  user_id: string;
+  category_id: string | null;
+  name: string;
+  amount: string;
+  currency: string;
+  frequency: RecurringFrequency;
+  movement_type: "income" | "expense";
+  next_date: string | null;
+  active: boolean;
+}
+
+export interface RecurringPayload {
+  name: string;
+  amount: string;
+  currency?: string;
+  frequency?: RecurringFrequency;
+  movement_type?: "income" | "expense";
+  category_id?: string | null;
+  next_date?: string | null;
+  active?: boolean;
+}
+
+export interface NetWorth {
+  accounts: Array<{ id: string; name: string; account_type: string; currency: string; balance: string }>;
+  totals_by_currency: Array<{ currency: string; total: string }>;
+  account_count: number;
+}
+
+export interface Settings {
+  email: string;
+  full_name: string;
+  preferences: Record<string, unknown> | null;
+}
+
+export interface SettingsPayload {
+  full_name?: string;
+  preferences?: Record<string, unknown>;
+}
