@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
-import type { LoginResponse, User } from "@/lib/api-types";
+import type { Account, AccountPayload, Institution, LoginResponse, User } from "@/lib/api-types";
 
 const api = axios.create({
   baseURL: "/api",
@@ -48,6 +48,14 @@ export const authApi = {
   logout: () => api.post<{ message: string }>("/v1/auth/logout"),
   refresh: () => api.post<{ ok: boolean }>("/v1/auth/refresh"),
   me: () => api.get<User>("/v1/auth/me"),
+};
+
+export const accountsApi = {
+  list: () => api.get<Account[]>("/v1/accounts"),
+  create: (payload: AccountPayload) => api.post<Account>("/v1/accounts", payload),
+  update: (id: string, payload: Partial<AccountPayload>) => api.patch<Account>(`/v1/accounts/${id}`, payload),
+  remove: (id: string) => api.delete(`/v1/accounts/${id}`),
+  institutions: () => api.get<Institution[]>("/v1/institutions"),
 };
 
 export default api;

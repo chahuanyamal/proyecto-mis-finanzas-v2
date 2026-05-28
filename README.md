@@ -124,6 +124,7 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 - [x] Frontend Next.js 15 scaffold con Tailwind CSS + React Query
 - [x] Endpoints API REST de autenticación (`/api/v1/auth/*`)
 - [x] Autenticación JWT con cookies HttpOnly (login, refresh, logout, me)
+- [x] CRUD básico de cuentas (`/api/v1/accounts`) + página `/accounts`
 - [ ] Upload y parseo de PDF
 - [ ] Dashboard mensual
 - [ ] Categorización por reglas
@@ -133,7 +134,7 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 
 ## Limitaciones actuales
 
-- **API parcial.** Existen `/health` y endpoints de autenticación. Falta migrar cuentas, transacciones, categorías, PDFs, presupuestos y dashboard real.
+- **API parcial.** Existen `/health`, autenticación y CRUD básico de cuentas. Falta migrar transacciones, categorías, PDFs, presupuestos y dashboard real.
 - **Auth v1 simplificada.** Usa JWT en cookies HttpOnly, sin Redis ni blacklist de sesiones. Refresh token es JWT firmado, no persistido en BD.
 - **Frontend mínimo.** Login y dashboard autenticado funcionan, pero el dashboard aún es placeholder.
 - **Sin tests.** `pytest` y `pytest-asyncio` están en dependencias pero no hay archivos de test.
@@ -172,6 +173,12 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 | `POST` | `/api/v1/auth/refresh` | Renueva cookies desde refresh token |
 | `POST` | `/api/v1/auth/logout` | Limpia cookies de sesión |
 | `GET` | `/api/v1/auth/me` | Usuario autenticado actual |
+| `GET` | `/api/v1/institutions` | Lista instituciones seeded |
+| `GET` | `/api/v1/accounts` | Lista cuentas del usuario autenticado |
+| `POST` | `/api/v1/accounts` | Crea cuenta para el usuario autenticado |
+| `GET` | `/api/v1/accounts/{id}` | Obtiene una cuenta propia |
+| `PATCH` | `/api/v1/accounts/{id}` | Edita una cuenta propia |
+| `DELETE` | `/api/v1/accounts/{id}` | Elimina una cuenta propia |
 
 ## Estructura del proyecto
 

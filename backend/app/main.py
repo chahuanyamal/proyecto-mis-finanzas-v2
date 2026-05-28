@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import async_session_factory, engine
+from app.modules.accounts.router import router as accounts_router
 from app.modules.auth.router import router as auth_router
 
 
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(auth_router)
+    app.include_router(accounts_router)
 
     @app.get("/health")
     async def health():

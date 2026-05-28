@@ -46,6 +46,13 @@ export default function DashboardPage() {
         >
           Cerrar sesión
         </button>
+        <button
+          type="button"
+          onClick={() => router.push("/accounts")}
+          className="ml-3 mt-8 rounded bg-brand-500 px-4 py-2 text-sm font-semibold text-black hover:bg-brand-400"
+        >
+          Ir a cuentas
+        </button>
       </div>
     </main>
   );
