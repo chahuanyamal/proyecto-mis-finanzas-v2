@@ -12,7 +12,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
 revision: str = "0004_goals_and_recurring"
-down_revision: Union[str, None] = "0003_add_user_id_to_transactions"
+# Encadenada tras la migración de main (PR #1) para mantener una sola cabeza lineal.
+down_revision: Union[str, None] = "0004_add_user_id_to_categories"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
