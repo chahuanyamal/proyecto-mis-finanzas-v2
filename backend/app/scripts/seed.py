@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.models import Category, Institution, User
 from app.core.config import settings
-from app.core.database import async_session_factory
+from app.core.database import async_session_factory, engine
 from app.core.security import hash_password
+
+# Identificador arbitrario para el advisory lock de Postgres que serializa el
+# seed entre arranques concurrentes.
+_SEED_LOCK_ID = 727_001
 
 
 INSTITUTIONS = [
@@ -37,6 +41,10 @@ CATEGORIES = {
 
 async def seed():
     async with async_session_factory() as db:
+        # Lock transaccional para que dos instancias arrancando a la vez no
+        # siembren datos duplicados (no-op fuera de Postgres).
+        if engine.dialect.name == "postgresql":
+            await db.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": _SEED_LOCK_ID})
         result = await db.execute(
             select(User).where(User.email == settings.ADMIN_EMAIL)
         )

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import ACCESS_TOKEN_TYPE, decode_token
 from app.models.user import User
-from app.modules.auth.service import ACCESS_COOKIE
+from app.modules.auth.service import ACCESS_COOKIE, is_token_revoked
 
 
 async def get_current_user(
@@ -25,6 +25,9 @@ async def get_current_user(
         user_id = uuid.UUID(str(payload.get("sub")))
     except (PyJWTError, ValueError, TypeError):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token inválido") from None
+
+    if await is_token_revoked(db, payload.get("jti")):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sesión revocada")
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()

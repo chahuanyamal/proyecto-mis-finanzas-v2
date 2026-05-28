@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_INSECURE_SECRET_KEYS = {
+    "cambiar-en-produccion-secret-key-min-32-chars",
+    "reemplazar-con-openssl-rand-hex-32",
+}
 
 
 class Settings(BaseSettings):
@@ -30,6 +36,18 @@ class Settings(BaseSettings):
     @property
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
+
+    @model_validator(mode="after")
+    def _validate_production_secrets(self) -> "Settings":
+        """En producción no se permite arrancar con un SECRET_KEY por defecto
+        o demasiado corto."""
+        if self.APP_ENV == "production":
+            if self.SECRET_KEY in _INSECURE_SECRET_KEYS or len(self.SECRET_KEY) < 32:
+                raise ValueError(
+                    "SECRET_KEY inseguro en producción: genera uno con "
+                    "`openssl rand -hex 32` y configúralo en el entorno."
+                )
+        return self
 
 
 settings = Settings()

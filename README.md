@@ -142,6 +142,8 @@ Atajos equivalentes vía `make`: `make build`, `make up`, `make down`, `make log
 | `start`             | Sirve el build de producción             | Probar localmente el resultado de `build`         |
 | `lint`              | ESLint sobre `src/**/*.{ts,tsx}`         | Antes de commitear o en CI                        |
 | `typecheck`         | `tsc --noEmit` (verificación de tipos)   | Validar tipos sin emitir JS; en CI                |
+| `test`              | Vitest en modo run (jsdom)               | Tests unitarios/componentes; en CI                |
+| `test:watch`        | Vitest en modo watch                     | Desarrollar tests con recarga                     |
 
 **Backend (`backend/`, vía `uv run <cmd>`):**
 
@@ -180,14 +182,14 @@ TEST_DATABASE_URL=postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas
 │   ├── pyproject.toml          # Dependencias y config de pytest
 │   ├── alembic.ini             # Config de Alembic
 │   ├── alembic/                # Entorno + migraciones de esquema
-│   │   └── versions/           # 0001 esquema, 0002 previews, 0003 tx.user_id, 0004 cat.user_id
+│   │   └── versions/           # 0001 esquema … 0004 cat.user_id, 0005 revoked_tokens
 │   ├── tests/                  # Tests de auth, cuentas, transacciones, budgets, parser
 │   └── app/
 │       ├── main.py             # create_app(): CORS, routers, /health
 │       ├── core/               # config (settings), database (engine/session), security (JWT/bcrypt)
 │       ├── models/             # Modelos SQLAlchemy (user, account, transaction, budget, ...)
 │       ├── modules/            # Un paquete por dominio: router + schemas (Pydantic)
-│       │   ├── auth/           # Login, refresh, logout, me, register (cookies HttpOnly)
+│       │   ├── auth/           # Login, refresh (con rotación), logout, me, register; revocación de JWT
 │       │   ├── accounts/       # CRUD de cuentas + instituciones
 │       │   ├── categories/     # Categorías (defaults del sistema + propias por usuario)
 │       │   ├── tags/           # Tags por usuario
@@ -216,13 +218,14 @@ TEST_DATABASE_URL=postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas
 
 ## Limitaciones conocidas
 
-1. **Sesiones JWT sin revocación.** Los tokens son JWT firmados (HS256) en cookies HttpOnly; no hay blacklist ni almacenamiento de sesiones, así que un token robado es válido hasta expirar y `logout` solo borra la cookie del cliente. Es una decisión de diseño de la v1 (sin Redis/almacén de sesiones, según `AGENTS.md`).
-2. **`SECRET_KEY` y credenciales por defecto inseguras.** Los valores de `.env.example` (`SECRET_KEY`, `ADMIN_PASSWORD=admin123`, password de Postgres) son solo para desarrollo y deben cambiarse antes de exponer la app.
-3. **Parsers bancarios sin validación contra cartolas reales.** La detección de banco (Itaú, BICE, Prex, UglyCash, TD Bank, Schwab, Alpaca) y los parsers se validan solo con fixtures sintéticos; requieren ajuste con PDFs reales por institución.
-4. **OCR dependiente del entorno.** El fallback OCR necesita Tesseract con idioma español instalado; fuera de Docker hay que instalarlo manualmente o el parsing de PDFs escaneados fallará.
-5. **Seed sin locking.** El seed de bootstrap no usa bloqueo; en arranques concurrentes de múltiples instancias podría haber una race condition (improbable en despliegue single-instance).
-6. **`COOKIE_SECURE=false` por defecto.** En producción con HTTPS debe ponerse en `true` para evitar envío de cookies sobre conexiones no cifradas.
-7. **Sin tests de frontend.** Solo el backend tiene suite de tests; el frontend se valida con `lint` y `typecheck`, sin pruebas unitarias ni e2e.
+1. **`ADMIN_PASSWORD` y password de Postgres por defecto.** Los valores de `.env.example` (`ADMIN_PASSWORD=admin123`, `POSTGRES_PASSWORD`) son solo para desarrollo y deben cambiarse antes de exponer la app. El `SECRET_KEY` sí se valida al arrancar: con `APP_ENV=production` la app se niega a iniciar si es el valor por defecto o tiene menos de 32 caracteres.
+2. **Parsers bancarios sin validación contra cartolas reales.** La detección de banco (Itaú, BICE, Prex, UglyCash, TD Bank, Schwab, Alpaca) y los parsers se validan solo con fixtures sintéticos; requieren ajuste con PDFs reales por institución.
+3. **OCR dependiente del entorno.** El fallback OCR necesita Tesseract con idioma español instalado; fuera de Docker hay que instalarlo manualmente o el parsing de PDFs escaneados fallará.
+4. **`COOKIE_SECURE=false` por defecto.** En producción con HTTPS debe ponerse en `true` para evitar envío de cookies sobre conexiones no cifradas.
+5. **Cobertura de tests de frontend acotada.** Hay harness de Vitest + Testing Library con tests del cliente API y de un componente; aún no hay pruebas e2e ni cobertura amplia de páginas.
 
-> **Categorías**: ahora hay aislamiento por usuario. Las categorías sembradas son del sistema (compartidas, `user_id` NULL, solo lectura) y cada usuario puede crear/editar/eliminar únicamente las suyas. Otros usuarios no pueden ver ni referenciar categorías privadas ajenas.
+> **Resuelto en esta versión:**
+> - **Aislamiento de categorías por usuario** (defaults del sistema compartidos/solo-lectura + categorías propias; no se pueden ver/referenciar las ajenas).
+> - **Revocación de JWT** vía tabla `revoked_tokens` en Postgres (sin Redis): `logout` invalida los tokens y el `refresh` rota e invalida el refresh token usado.
+> - **Seed con advisory lock** de Postgres para evitar duplicados en arranques concurrentes.
 ```

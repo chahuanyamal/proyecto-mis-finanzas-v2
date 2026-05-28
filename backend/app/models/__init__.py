@@ -3,6 +3,7 @@ from app.models.budget import Budget
 from app.models.category import Category
 from app.models.category_rule import CategoryRule
 from app.models.institution import Institution
+from app.models.revoked_token import RevokedToken
 from app.models.statement_preview import StatementPreview
 from app.models.uploaded_file import UploadedFile
 from app.models.tag import Tag
@@ -22,4 +23,5 @@ __all__ = [
     "Budget",
     "Tag",
     "TransactionTag",
+    "RevokedToken",
 ]
