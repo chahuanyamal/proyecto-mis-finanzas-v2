@@ -155,6 +155,22 @@ export interface StatementUpload {
 export interface StatementUploadResponse {
   uploaded_file: StatementUpload;
   imported_transactions: number;
+  possible_duplicates: string[];
+}
+
+export interface PreviewRow {
+  date: string;
+  description: string;
+  amount: string;
+  movement_type: "income" | "expense";
+}
+
+export interface PreviewSummary {
+  total_rows: number;
+  total_income: string;
+  total_expenses: string;
+  date_start: string | null;
+  date_end: string | null;
 }
 
 export interface StatementPreview {
@@ -164,5 +180,6 @@ export interface StatementPreview {
   filename: string;
   bank_detected: string | null;
   status: string;
-  rows: Array<{ date: string; description: string; amount: string; movement_type: "income" | "expense" }>;
+  rows: PreviewRow[];
+  summary: PreviewSummary | null;
 }

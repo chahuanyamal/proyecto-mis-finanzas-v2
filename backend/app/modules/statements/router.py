@@ -18,7 +18,14 @@ from app.models.uploaded_file import UploadedFile
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
 from app.modules.statements.parser import StatementParseError, parse_statement_pdf
-from app.modules.statements.schemas import StatementConfirmResponse, StatementPreviewOut, StatementUploadResponse, UploadedFileOut
+from app.modules.statements.schemas import (
+    PreviewRowUpdate,
+    PreviewSummary,
+    StatementConfirmResponse,
+    StatementPreviewOut,
+    StatementUploadResponse,
+    UploadedFileOut,
+)
 
 router = APIRouter(prefix="/api/v1/statements", tags=["statements"])
 
@@ -54,6 +61,55 @@ def _store_upload(current_user: User, file: UploadFile) -> Path:
     return upload_dir / safe_name
 
 
+def _build_summary(rows: list[dict]) -> PreviewSummary:
+    income = Decimal("0")
+    expenses = Decimal("0")
+    dates: list[datetime.date] = []
+    for row in rows:
+        amt = Decimal(str(row.get("amount", "0")))
+        if row.get("movement_type") == "income":
+            income += amt
+        else:
+            expenses += amt
+        try:
+            dates.append(datetime.date.fromisoformat(row["date"]))
+        except (ValueError, KeyError):
+            pass
+    return PreviewSummary(
+        total_rows=len(rows),
+        total_income=str(income),
+        total_expenses=str(expenses),
+        date_start=min(dates).isoformat() if dates else None,
+        date_end=max(dates).isoformat() if dates else None,
+    )
+
+
+async def _detect_duplicates(preview: StatementPreview, db: AsyncSession, current_user: User) -> list[str]:
+    if not preview.rows:
+        return []
+    existing = await db.execute(
+        select(Transaction.date, Transaction.description, Transaction.amount)
+        .where(Transaction.user_id == current_user.id)
+    )
+    existing_set = {(r.date, r.description.strip().lower(), r.amount) for r in existing.all()}
+    duplicates: list[str] = []
+    for idx, row in enumerate(preview.rows):
+        key = (
+            datetime.date.fromisoformat(row["date"]),
+            row["description"].strip().lower(),
+            Decimal(str(row["amount"])),
+        )
+        if key in existing_set:
+            duplicates.append(f"Fila {idx + 1}: {row['date']} - {row['description'][:60]} - {row['amount']}")
+    return duplicates
+
+
+def _preview_to_out(preview: StatementPreview) -> StatementPreviewOut:
+    out = StatementPreviewOut.model_validate(preview)
+    out.summary = _build_summary(preview.rows or [])
+    return out
+
+
 async def _create_uploaded_file_from_rows(preview: StatementPreview, account: Account, db: AsyncSession) -> tuple[UploadedFile, int]:
     uploaded_file = UploadedFile(
         account_id=preview.account_id,
@@ -69,6 +125,7 @@ async def _create_uploaded_file_from_rows(preview: StatementPreview, account: Ac
         db.add(Transaction(
             uploaded_file_id=uploaded_file.id,
             account_id=preview.account_id,
+            user_id=preview.user_id,
             currency=account.currency,
             date=datetime.date.fromisoformat(row["date"]),
             description=row["description"],
@@ -89,13 +146,13 @@ async def list_statements(db: AsyncSession = Depends(get_db), current_user: User
 
 
 @router.get("/previews", response_model=list[StatementPreviewOut])
-async def list_previews(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> list[StatementPreview]:
+async def list_previews(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> list[StatementPreviewOut]:
     result = await db.execute(select(StatementPreview).where(StatementPreview.user_id == current_user.id).order_by(StatementPreview.created_at.desc()))
-    return list(result.scalars().all())
+    return [_preview_to_out(p) for p in result.scalars().all()]
 
 
 @router.post("/preview", response_model=StatementPreviewOut, status_code=status.HTTP_201_CREATED)
-async def create_preview(account_id: uuid.UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementPreview:
+async def create_preview(account_id: uuid.UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementPreviewOut:
     await _account_or_404(account_id, db, current_user)
     if file.content_type != "application/pdf":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Solo se aceptan PDFs")
@@ -111,23 +168,54 @@ async def create_preview(account_id: uuid.UUID, file: UploadFile = File(...), db
     db.add(preview)
     await db.commit()
     await db.refresh(preview)
-    return preview
+    return _preview_to_out(preview)
 
 
 @router.get("/previews/{preview_id}", response_model=StatementPreviewOut)
-async def get_preview(preview_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementPreview:
-    return await _preview_or_404(preview_id, db, current_user)
+async def get_preview(preview_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementPreviewOut:
+    preview = await _preview_or_404(preview_id, db, current_user)
+    return _preview_to_out(preview)
+
+
+@router.patch("/previews/{preview_id}/rows")
+async def update_preview_rows(preview_id: uuid.UUID, body: PreviewRowUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementPreviewOut:
+    preview = await _preview_or_404(preview_id, db, current_user)
+    preview.rows = [row.model_dump() for row in body.rows]
+    await db.commit()
+    await db.refresh(preview)
+    return _preview_to_out(preview)
+
+
+@router.delete("/previews/{preview_id}/rows/{idx}")
+async def delete_preview_row(preview_id: uuid.UUID, idx: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementPreviewOut:
+    preview = await _preview_or_404(preview_id, db, current_user)
+    rows = list(preview.rows or [])
+    if idx < 0 or idx >= len(rows):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Índice fuera de rango: {idx} (total {len(rows)} filas)")
+    del rows[idx]
+    preview.rows = rows
+    await db.commit()
+    await db.refresh(preview)
+    return _preview_to_out(preview)
+
+
+@router.get("/previews/{preview_id}/duplicates")
+async def check_duplicates(preview_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> dict[str, list[str]]:
+    preview = await _preview_or_404(preview_id, db, current_user)
+    duplicates = await _detect_duplicates(preview, db, current_user)
+    return {"duplicates": duplicates}
 
 
 @router.post("/previews/{preview_id}/confirm", response_model=StatementConfirmResponse)
 async def confirm_preview(preview_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementConfirmResponse:
     preview = await _preview_or_404(preview_id, db, current_user)
     account = await _account_or_404(preview.account_id, db, current_user)
+    duplicates = await _detect_duplicates(preview, db, current_user)
     uploaded_file, count = await _create_uploaded_file_from_rows(preview, account, db)
     await db.delete(preview)
     await db.commit()
     await db.refresh(uploaded_file)
-    return StatementConfirmResponse(uploaded_file=UploadedFileOut.model_validate(uploaded_file), imported_transactions=count)
+    return StatementConfirmResponse(uploaded_file=UploadedFileOut.model_validate(uploaded_file), imported_transactions=count, possible_duplicates=duplicates)
 
 
 @router.post("/previews/{preview_id}/cancel")
@@ -158,7 +246,7 @@ async def reprocess_statement(uploaded_file_id: uuid.UUID, db: AsyncSession = De
         rows = parsed["rows"]
         uploaded_file.bank_detected = parsed["bank_detected"]
     for row in rows:
-        db.add(Transaction(uploaded_file_id=uploaded_file.id, account_id=account.id, currency=account.currency, date=datetime.date.fromisoformat(row["date"]), description=row["description"], amount=Decimal(str(row["amount"])), movement_type=row["movement_type"]))
+        db.add(Transaction(uploaded_file_id=uploaded_file.id, account_id=account.id, user_id=current_user.id, currency=account.currency, date=datetime.date.fromisoformat(row["date"]), description=row["description"], amount=Decimal(str(row["amount"])), movement_type=row["movement_type"]))
     if rows:
         dates = [datetime.date.fromisoformat(row["date"]) for row in rows]
         uploaded_file.period_start = min(dates)

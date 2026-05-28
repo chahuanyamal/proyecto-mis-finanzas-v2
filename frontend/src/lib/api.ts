@@ -11,6 +11,7 @@ import type {
   Institution,
   LoginResponse,
   MonthlyDashboard,
+  PreviewRow,
   StatementUpload,
   StatementPreview,
   StatementUploadResponse,
@@ -131,6 +132,13 @@ export const statementsApi = {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
+  getPreview: (previewId: string) => api.get<StatementPreview>(`/v1/statements/previews/${previewId}`),
+  updateRows: (previewId: string, rows: PreviewRow[]) =>
+    api.patch<StatementPreview>(`/v1/statements/previews/${previewId}/rows`, { rows }),
+  deleteRow: (previewId: string, idx: number) =>
+    api.delete<StatementPreview>(`/v1/statements/previews/${previewId}/rows/${idx}`),
+  checkDuplicates: (previewId: string) =>
+    api.get<{ duplicates: string[] }>(`/v1/statements/previews/${previewId}/duplicates`),
   confirm: (previewId: string) => api.post<StatementUploadResponse>(`/v1/statements/previews/${previewId}/confirm`),
   cancel: (previewId: string) => api.post<{ ok: boolean }>(`/v1/statements/previews/${previewId}/cancel`),
   detail: (uploadedFileId: string) => api.get(`/v1/statements/history/${uploadedFileId}`),
