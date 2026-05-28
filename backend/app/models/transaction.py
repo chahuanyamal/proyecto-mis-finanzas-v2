@@ -1,0 +1,59 @@
+from __future__ import annotations
+
+import uuid
+import datetime
+from decimal import Decimal
+
+from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+from app.models.mixins import TimestampMixin
+
+
+class Transaction(Base, TimestampMixin):
+    __tablename__ = "transactions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, default=uuid.uuid4
+    )
+    uploaded_file_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("uploaded_files.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    rule_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("category_rules.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    date: Mapped[datetime.date] = mapped_column(
+        Date, nullable=False, index=True
+    )
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False
+    )
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, default="CLP"
+    )
+    movement_type: Mapped[str] = mapped_column(
+        String(10), nullable=False
+    )
+
+    uploaded_file = relationship("UploadedFile", back_populates="transactions")
+    account = relationship("Account", back_populates="transactions")
+    category = relationship("Category", back_populates="transactions")
+    category_rule = relationship("CategoryRule", back_populates="transactions")
+    tags = relationship(
+        "TransactionTag", back_populates="transaction", cascade="all, delete-orphan"
+    )

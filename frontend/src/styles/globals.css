@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-surface: 15 23 42;
+    --color-ink: 248 250 252;
+    --color-brand: 245 158 11;
+    --color-positive: 34 197 94;
+    --color-negative: 239 68 68;
+  }
+
+  .light {
+    --color-surface: 248 250 252;
+    --color-ink: 15 23 42;
+    --color-brand: 217 119 6;
+  }
+
+  body {
+    background-color: rgb(var(--color-surface));
+    color: rgb(var(--color-ink));
+    font-family: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+  }
+}
