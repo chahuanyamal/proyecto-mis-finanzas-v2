@@ -31,4 +31,6 @@ class User(Base, TimestampMixin):
     uploaded_files = relationship("UploadedFile", back_populates="uploaded_by")
     category_rules = relationship("CategoryRule", back_populates="user")
     budgets = relationship("Budget", back_populates="user")
+    goals = relationship("Goal", back_populates="user")
+    recurring_expenses = relationship("RecurringExpense", back_populates="user")
     tags = relationship("Tag", back_populates="user")

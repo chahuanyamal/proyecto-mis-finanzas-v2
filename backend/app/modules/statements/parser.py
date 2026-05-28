@@ -33,12 +33,74 @@ class StatementParseError(RuntimeError):
 _GENERIC_LINE_RE = re.compile(r"(?P<date>\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(?P<description>.+?)\s+(?P<amount>-?\$?\s?[\d\.,]+)\s*$")
 _AMOUNT_TOKEN_RE = re.compile(r"^-?\$?[\d\.,]+-?$|^-$|^\(-?\$?[\d\.,]+\)$")
 
+# A partir de este largo de texto asumimos que es una cartola real y damos
+# prioridad a los parsers bancarios dedicados (registry). Los fixtures de
+# test son cortos, así que siguen usando la ruta simple y determinística.
+_ADVANCED_MIN_TEXT_LEN = 400
+# Confianza mínima del parser detectado para confiar en su resultado.
+_ADVANCED_MIN_CONFIDENCE = 0.4
+
 
 def parse_statement_pdf(path: Path) -> ParseResult:
     text, method = _extract_text(path)
+    advanced = _parse_with_registry(path, text, method)
+    if advanced is not None:
+        return advanced
     bank = _detect_bank(text)
     rows = _parse_rows(text, bank)
     return {"bank_detected": f"{bank}:{method}", "extraction_method": method, "rows": rows}
+
+
+def _parse_with_registry(path: Path, text: str, method: Literal["text", "ocr"]) -> ParseResult | None:
+    """Intenta parsear con los parsers bancarios dedicados (Itaú, BICE, Prex,
+    UglyCash, TD Bank, Schwab, Alpaca, genérico). Devuelve None si no aplica o
+    no extrae filas, para que el caller use la ruta simple como fallback."""
+    if len(text) < _ADVANCED_MIN_TEXT_LEN:
+        return None
+    try:
+        content = path.read_bytes()
+    except OSError:
+        return None
+    # Import diferido: evita coste de carga del registry en la ruta simple.
+    from app.modules.parsers.registry import ParserRegistry
+
+    try:
+        parser_impl, confidence = ParserRegistry().detect(content, path.name)
+        if confidence < _ADVANCED_MIN_CONFIDENCE:
+            return None
+        result = parser_impl.parse(content, text, None)
+    except Exception:
+        return None
+    rows = _rows_from_result(result)
+    if not rows:
+        return None
+    return {"bank_detected": f"{parser_impl.key}:{method}", "extraction_method": method, "rows": rows}
+
+
+def _rows_from_result(result: object) -> list[ParsedRow]:
+    """Mapea el ParseResult rico de los parsers bancarios al ParsedRow simple
+    de la v2: convierte credit/debit → income/expense y monto a positivo."""
+    rows: list[ParsedRow] = []
+    for tx in getattr(result, "transactions", None) or []:
+        raw_date = tx.get("date")
+        raw_amount = tx.get("amount")
+        if raw_date is None or raw_amount is None:
+            continue
+        iso = raw_date.isoformat() if hasattr(raw_date, "isoformat") else str(raw_date)
+        try:
+            amount = Decimal(str(raw_amount))
+        except (InvalidOperation, ValueError):
+            continue
+        mt = str(tx.get("movement_type", "expense"))
+        movement_type: MovementType = "income" if mt in ("income", "credit") else "expense"
+        description = str(tx.get("original_description") or tx.get("description") or "").strip()[:500]
+        rows.append({
+            "date": iso,
+            "description": description,
+            "amount": str(abs(amount)),
+            "movement_type": movement_type,
+        })
+    return rows
 
 
 def _extract_text(path: Path) -> tuple[str, Literal["text", "ocr"]]:
