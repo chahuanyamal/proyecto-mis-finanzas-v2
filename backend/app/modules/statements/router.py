@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import datetime
-import re
 import uuid
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 
-import pdfplumber
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,10 +17,10 @@ from app.models.transaction import Transaction
 from app.models.uploaded_file import UploadedFile
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
+from app.modules.statements.parser import StatementParseError, parse_statement_pdf
 from app.modules.statements.schemas import StatementConfirmResponse, StatementPreviewOut, StatementUploadResponse, UploadedFileOut
 
 router = APIRouter(prefix="/api/v1/statements", tags=["statements"])
-_LINE_RE = re.compile(r"(?P<date>\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(?P<description>.+?)\s+(?P<amount>-?\$?\s?[\d\.,]+)\s*$")
 
 
 async def _account_or_404(account_id: uuid.UUID, db: AsyncSession, current_user: User) -> Account:
@@ -47,44 +45,6 @@ async def _uploaded_file_or_404(uploaded_file_id: uuid.UUID, db: AsyncSession, c
     if uploaded_file is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cartola no encontrada")
     return uploaded_file
-
-
-def _parse_date(value: str) -> datetime.date | None:
-    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y", "%d-%m-%y"):
-        try:
-            return datetime.datetime.strptime(value, fmt).date()
-        except ValueError:
-            continue
-    return None
-
-
-def _parse_amount(value: str) -> Decimal | None:
-    cleaned = value.replace("$", "").replace(" ", "").replace(".", "").replace(",", ".")
-    try:
-        return Decimal(cleaned)
-    except InvalidOperation:
-        return None
-
-
-def _extract_transactions(path: Path) -> list[dict]:
-    rows: list[dict] = []
-    with pdfplumber.open(path) as pdf:
-        for page in pdf.pages:
-            for line in (page.extract_text() or "").splitlines():
-                match = _LINE_RE.search(line.strip())
-                if not match:
-                    continue
-                date = _parse_date(match.group("date"))
-                amount = _parse_amount(match.group("amount"))
-                if date is None or amount is None:
-                    continue
-                rows.append({
-                    "date": date.isoformat(),
-                    "description": match.group("description").strip()[:500],
-                    "amount": str(abs(amount)),
-                    "movement_type": "income" if amount > 0 else "expense",
-                })
-    return rows
 
 
 def _store_upload(current_user: User, file: UploadFile) -> Path:
@@ -141,8 +101,13 @@ async def create_preview(account_id: uuid.UUID, file: UploadFile = File(...), db
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Solo se aceptan PDFs")
     path = _store_upload(current_user, file)
     path.write_bytes(await file.read())
-    rows = _extract_transactions(path)
-    preview = StatementPreview(account_id=account_id, user_id=current_user.id, filename=file.filename or path.name, stored_filename=str(path), bank_detected="fallback", status="ready", rows=rows)
+    try:
+        parsed = parse_statement_pdf(path)
+    except StatementParseError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"No se pudo parsear el PDF: {exc}") from exc
+    preview = StatementPreview(account_id=account_id, user_id=current_user.id, filename=file.filename or path.name, stored_filename=str(path), bank_detected=parsed["bank_detected"], status="ready", rows=parsed["rows"])
     db.add(preview)
     await db.commit()
     await db.refresh(preview)
@@ -187,9 +152,17 @@ async def reprocess_statement(uploaded_file_id: uuid.UUID, db: AsyncSession = De
     account = await _account_or_404(uploaded_file.account_id, db, current_user)
     await db.execute(delete(Transaction).where(Transaction.uploaded_file_id == uploaded_file.id))
     path = next(Path(settings.UPLOAD_DIR).glob(f"{current_user.id}-*-{uploaded_file.filename}"), None)
-    rows = _extract_transactions(path) if path else []
+    rows = []
+    if path:
+        parsed = parse_statement_pdf(path)
+        rows = parsed["rows"]
+        uploaded_file.bank_detected = parsed["bank_detected"]
     for row in rows:
         db.add(Transaction(uploaded_file_id=uploaded_file.id, account_id=account.id, currency=account.currency, date=datetime.date.fromisoformat(row["date"]), description=row["description"], amount=Decimal(str(row["amount"])), movement_type=row["movement_type"]))
+    if rows:
+        dates = [datetime.date.fromisoformat(row["date"]) for row in rows]
+        uploaded_file.period_start = min(dates)
+        uploaded_file.period_end = max(dates)
     await db.commit()
     await db.refresh(uploaded_file)
     return StatementConfirmResponse(uploaded_file=UploadedFileOut.model_validate(uploaded_file), imported_transactions=len(rows))

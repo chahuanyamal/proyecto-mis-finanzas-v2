@@ -101,6 +101,15 @@ uv run alembic upgrade head     # Aplicar migraciones pendientes
 uv run alembic revision --autogenerate -m "descripción"  # Crear nueva migración
 ```
 
+### Tests
+
+```bash
+cd backend
+uv run pytest
+```
+
+Los tests actuales cubren el parser de cartolas con fixtures de texto para Itaú, BICE, Prex y fallback genérico.
+
 ## Admin por defecto
 
 Al iniciar por primera vez se crea automáticamente:
@@ -111,6 +120,19 @@ Al iniciar por primera vez se crea automáticamente:
 | Password  | admin123                 |
 
 Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
+
+## Validación de cartolas reales
+
+Para cerrar un parser bancario contra cartolas reales:
+
+1. Levantar la app con `docker compose up --build -d`.
+2. Entrar a `http://localhost:1510` con el usuario admin.
+3. Crear o seleccionar una cuenta de la institución correspondiente.
+4. Subir el PDF en `/statements` y revisar el preview antes de confirmar.
+5. Verificar banco detectado, cantidad de filas, fechas, cargos/abonos y montos.
+6. Si falla, crear un fixture sanitizado en `backend/tests/` con texto extraído, nunca con datos personales reales.
+
+No hay PDFs reales en el repositorio; los parsers actuales se validan con fixtures sintéticos y deben ajustarse cuando se prueben cartolas reales.
 
 ## Estado actual del proyecto
 
@@ -132,17 +154,20 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 - [x] Auto-categorización por reglas y exportación Excel de transacciones
 - [x] Upload PDF + parser fallback básico + historial `/statements`
 - [x] Preview/confirmación/cancelación/reproceso básico de cartolas PDF
+- [x] Detección inicial de banco + parsers Itaú/BICE/Prex/fallback
+- [x] OCR fallback con Tesseract cuando el PDF no trae texto útil
 - [x] Shell visual autenticado para navegación principal
-- [ ] Parsers bancarios específicos
-- [ ] Tests
+- [ ] Parsers bancarios específicos completos con fixtures reales por institución
+- [x] Tests unitarios iniciales del parser de cartolas
+- [ ] Cobertura completa de tests backend/frontend
 
 ## Limitaciones actuales
 
-- **API parcial.** Existen `/health`, autenticación, cuentas, categorías, tags, reglas, transacciones manuales, presupuestos, dashboard mensual, auto-categorización, export Excel y cartolas PDF con preview/confirmación básica. Falta migrar parsers bancarios específicos y reportes avanzados.
+- **API parcial.** Existen `/health`, autenticación, cuentas, categorías, tags, reglas, transacciones manuales, presupuestos, dashboard mensual, auto-categorización, export Excel y cartolas PDF con preview/confirmación básica. Falta endurecer parsers bancarios con cartolas reales y reportes avanzados.
 - **Auth v1 simplificada.** Usa JWT en cookies HttpOnly, sin Redis ni blacklist de sesiones. Refresh token es JWT firmado, no persistido en BD.
 - **Frontend v1.** Login, shell autenticado y pantallas CRUD principales funcionan; falta pulir UX/validaciones finas.
-- **Sin tests.** `pytest` y `pytest-asyncio` están en dependencias pero no hay archivos de test.
-- **PDF parsing básico.** El fallback usa `pdfplumber` con regex genérica; `pytesseract` está instalado para OCR futuro pero aún no se usa.
+- **Cobertura baja de tests.** Hay tests unitarios iniciales para parsers de cartolas; faltan tests de API, auth, queries por `user_id` y frontend.
+- **PDF parsing inicial.** Usa `pdfplumber`; si no hay texto útil cae a OCR con `pytesseract`. Hay detección inicial para Itaú, BICE, Prex y fallback genérico, pero requiere validarse con PDFs reales.
 - **Admin creado sin verificación de unicidad en seed concurrente.** El seed de bootstrap no usa locking; si múltiples instancias arrancan simultáneamente puede haber race condition (poco probable en deploy single-instance).
 - **El `SECRET_KEY` por defecto es inseguro.** Debe cambiarse en producción con `openssl rand -hex 32`.
 
