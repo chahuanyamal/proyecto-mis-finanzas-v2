@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
@@ -9,18 +10,26 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, StaticPool
 
-from app.core.config import settings
 from app.core.database import Base, get_db
 from app.main import create_app
 from app.models.category import Category
 from app.models.institution import Institution
 from app.models.user import User
 
-TEST_DB = "finanzas_test"
-_parts = settings.DATABASE_URL.rsplit("/", 1)
-TEST_URL = f"{_parts[0]}/{TEST_DB}"
+# Default to an in-memory SQLite database so the suite runs anywhere without a
+# live Postgres. Override with TEST_DATABASE_URL to run against Postgres, e.g.
+# TEST_DATABASE_URL=postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas_test
+TEST_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+
+
+def _engine_kwargs(url: str) -> dict[str, Any]:
+    if url.startswith("sqlite"):
+        # StaticPool keeps a single connection alive so the in-memory schema
+        # persists across sessions for the whole test run.
+        return {"poolclass": StaticPool, "connect_args": {"check_same_thread": False}}
+    return {"poolclass": NullPool}
 
 SEED_INSTITUTIONS = [
     ("Itaú", "CL"),
@@ -56,7 +65,7 @@ def event_loop() -> Any:
 
 @pytest_asyncio.fixture(scope="session")
 async def _test_engine():
-    engine = create_async_engine(TEST_URL, echo=False, poolclass=NullPool)
+    engine = create_async_engine(TEST_URL, echo=False, **_engine_kwargs(TEST_URL))
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)

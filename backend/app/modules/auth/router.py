@@ -39,28 +39,6 @@ async def register(
     return UserOut.model_validate(user)
 
 
-@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def register(
-    body: RegisterRequest,
-    db: AsyncSession = Depends(get_db),
-) -> UserOut:
-    email = body.email.strip().lower()
-    result = await db.execute(select(User).where(User.email == email))
-    if result.scalar_one_or_none() is not None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email ya registrado")
-    
-    user = User(
-        email=email,
-        hashed_password=hash_password(body.password),
-        full_name=body.full_name,
-        is_active=True,
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return UserOut.model_validate(user)
-
-
 @router.post("/login", response_model=LoginResponse)
 async def login(
     body: LoginRequest,

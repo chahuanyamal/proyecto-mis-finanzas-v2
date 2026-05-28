@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     APP_ENV: str = "development"
     DEBUG: bool = True
-    ALLOWED_ORIGINS: str = "http://localhost:3000"
+    ALLOWED_ORIGINS: str = "http://localhost:1510"
 
     DATABASE_URL: str = "postgresql+asyncpg://finanzas:finanzas@postgres:5432/finanzas"
     UPLOAD_DIR: str = "/app/uploads"
