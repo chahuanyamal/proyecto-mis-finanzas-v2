@@ -1,0 +1,150 @@
+from __future__ import annotations
+
+import datetime
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.database import get_db
+from app.models.account import Account
+from app.models.category import Category
+from app.models.transaction import Transaction
+from app.models.uploaded_file import UploadedFile
+from app.models.user import User
+from app.modules.auth.deps import get_current_user
+from app.modules.transactions.schemas import TransactionCreate, TransactionOut, TransactionUpdate
+
+router = APIRouter(prefix="/api/v1/transactions", tags=["transactions"])
+
+
+async def _account_or_404(account_id: uuid.UUID, db: AsyncSession, current_user: User) -> Account:
+    result = await db.execute(select(Account).where(Account.id == account_id, Account.user_id == current_user.id))
+    account = result.scalar_one_or_none()
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuenta no encontrada")
+    return account
+
+
+async def _category_or_404(category_id: uuid.UUID | None, db: AsyncSession) -> None:
+    if category_id is None:
+        return
+    result = await db.execute(select(Category.id).where(Category.id == category_id))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Categoría no encontrada")
+
+
+async def _transaction_or_404(transaction_id: uuid.UUID, db: AsyncSession, current_user: User) -> Transaction:
+    result = await db.execute(
+        select(Transaction)
+        .join(Account)
+        .options(
+            selectinload(Transaction.account).selectinload(Account.institution),
+            selectinload(Transaction.category),
+        )
+        .where(Transaction.id == transaction_id, Account.user_id == current_user.id)
+    )
+    transaction = result.scalar_one_or_none()
+    if transaction is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Transacción no encontrada")
+    return transaction
+
+
+async def _manual_uploaded_file(account: Account, db: AsyncSession, current_user: User) -> UploadedFile:
+    uploaded_file = UploadedFile(
+        account_id=account.id,
+        user_id=current_user.id,
+        filename="manual-entry",
+        bank_detected="manual",
+        status="processed",
+    )
+    db.add(uploaded_file)
+    await db.flush()
+    return uploaded_file
+
+
+@router.get("", response_model=list[TransactionOut])
+async def list_transactions(
+    account_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
+    start_date: datetime.date | None = None,
+    end_date: datetime.date | None = None,
+    search: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[Transaction]:
+    query = (
+        select(Transaction)
+        .join(Account)
+        .options(
+            selectinload(Transaction.account).selectinload(Account.institution),
+            selectinload(Transaction.category),
+        )
+        .where(Account.user_id == current_user.id)
+    )
+    if account_id is not None:
+        query = query.where(Transaction.account_id == account_id)
+    if category_id is not None:
+        query = query.where(Transaction.category_id == category_id)
+    if start_date is not None:
+        query = query.where(Transaction.date >= start_date)
+    if end_date is not None:
+        query = query.where(Transaction.date <= end_date)
+    if search:
+        query = query.where(Transaction.description.ilike(f"%{search}%"))
+    query = query.order_by(Transaction.date.desc(), Transaction.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+@router.post("", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)
+async def create_transaction(
+    body: TransactionCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Transaction:
+    account = await _account_or_404(body.account_id, db, current_user)
+    await _category_or_404(body.category_id, db)
+    uploaded_file = await _manual_uploaded_file(account, db, current_user)
+    transaction = Transaction(uploaded_file_id=uploaded_file.id, **body.model_dump())
+    db.add(transaction)
+    await db.flush()
+    transaction_id = transaction.id
+    await db.commit()
+    return await _transaction_or_404(transaction_id, db, current_user)
+
+
+@router.get("/{transaction_id}", response_model=TransactionOut)
+async def get_transaction(transaction_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> Transaction:
+    return await _transaction_or_404(transaction_id, db, current_user)
+
+
+@router.patch("/{transaction_id}", response_model=TransactionOut)
+async def update_transaction(
+    transaction_id: uuid.UUID,
+    body: TransactionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Transaction:
+    transaction = await _transaction_or_404(transaction_id, db, current_user)
+    changes = body.model_dump(exclude_unset=True)
+    if "account_id" in changes and changes["account_id"] is not None:
+        await _account_or_404(changes["account_id"], db, current_user)
+    if "category_id" in changes:
+        await _category_or_404(changes["category_id"], db)
+    for field, value in changes.items():
+        setattr(transaction, field, value)
+    await db.commit()
+    return await _transaction_or_404(transaction_id, db, current_user)
+
+
+@router.delete("/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_transaction(transaction_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> Response:
+    transaction = await _transaction_or_404(transaction_id, db, current_user)
+    await db.delete(transaction)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

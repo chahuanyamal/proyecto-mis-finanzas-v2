@@ -11,6 +11,10 @@ from app.core.config import settings
 from app.core.database import async_session_factory, engine
 from app.modules.accounts.router import router as accounts_router
 from app.modules.auth.router import router as auth_router
+from app.modules.categories.router import router as categories_router
+from app.modules.rules.router import router as rules_router
+from app.modules.tags.router import router as tags_router
+from app.modules.transactions.router import router as transactions_router
 
 
 @asynccontextmanager
@@ -37,6 +41,10 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(accounts_router)
+    app.include_router(categories_router)
+    app.include_router(tags_router)
+    app.include_router(rules_router)
+    app.include_router(transactions_router)
 
     @app.get("/health")
     async def health():

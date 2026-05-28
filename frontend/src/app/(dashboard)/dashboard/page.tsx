@@ -53,6 +53,12 @@ export default function DashboardPage() {
         >
           Ir a cuentas
         </button>
+        <div className="mt-6 flex flex-wrap gap-3 text-sm">
+          <button type="button" onClick={() => router.push("/transactions")} className="rounded border border-slate-700 px-3 py-2 hover:border-brand-400">Transacciones</button>
+          <button type="button" onClick={() => router.push("/categories")} className="rounded border border-slate-700 px-3 py-2 hover:border-brand-400">Categorías</button>
+          <button type="button" onClick={() => router.push("/tags")} className="rounded border border-slate-700 px-3 py-2 hover:border-brand-400">Tags</button>
+          <button type="button" onClick={() => router.push("/rules")} className="rounded border border-slate-700 px-3 py-2 hover:border-brand-400">Reglas</button>
+        </div>
       </div>
     </main>
   );

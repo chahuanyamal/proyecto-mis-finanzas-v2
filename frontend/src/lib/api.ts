@@ -1,5 +1,19 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
-import type { Account, AccountPayload, Institution, LoginResponse, User } from "@/lib/api-types";
+import type {
+  Account,
+  AccountPayload,
+  Category,
+  CategoryPayload,
+  CategoryRule,
+  CategoryRulePayload,
+  Institution,
+  LoginResponse,
+  Tag,
+  TagPayload,
+  Transaction,
+  TransactionPayload,
+  User,
+} from "@/lib/api-types";
 
 const api = axios.create({
   baseURL: "/api",
@@ -56,6 +70,34 @@ export const accountsApi = {
   update: (id: string, payload: Partial<AccountPayload>) => api.patch<Account>(`/v1/accounts/${id}`, payload),
   remove: (id: string) => api.delete(`/v1/accounts/${id}`),
   institutions: () => api.get<Institution[]>("/v1/institutions"),
+};
+
+export const categoriesApi = {
+  list: () => api.get<Category[]>("/v1/categories"),
+  create: (payload: CategoryPayload) => api.post<Category>("/v1/categories", payload),
+  update: (id: string, payload: Partial<CategoryPayload>) => api.patch<Category>(`/v1/categories/${id}`, payload),
+  remove: (id: string) => api.delete(`/v1/categories/${id}`),
+};
+
+export const tagsApi = {
+  list: () => api.get<Tag[]>("/v1/tags"),
+  create: (payload: TagPayload) => api.post<Tag>("/v1/tags", payload),
+  update: (id: string, payload: Partial<TagPayload>) => api.patch<Tag>(`/v1/tags/${id}`, payload),
+  remove: (id: string) => api.delete(`/v1/tags/${id}`),
+};
+
+export const rulesApi = {
+  list: () => api.get<CategoryRule[]>("/v1/category-rules"),
+  create: (payload: CategoryRulePayload) => api.post<CategoryRule>("/v1/category-rules", payload),
+  update: (id: string, payload: Partial<CategoryRulePayload>) => api.patch<CategoryRule>(`/v1/category-rules/${id}`, payload),
+  remove: (id: string) => api.delete(`/v1/category-rules/${id}`),
+};
+
+export const transactionsApi = {
+  list: () => api.get<Transaction[]>("/v1/transactions"),
+  create: (payload: TransactionPayload) => api.post<Transaction>("/v1/transactions", payload),
+  update: (id: string, payload: Partial<TransactionPayload>) => api.patch<Transaction>(`/v1/transactions/${id}`, payload),
+  remove: (id: string) => api.delete(`/v1/transactions/${id}`),
 };
 
 export default api;

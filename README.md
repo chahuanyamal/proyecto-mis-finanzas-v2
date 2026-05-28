@@ -125,16 +125,18 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 - [x] Endpoints API REST de autenticación (`/api/v1/auth/*`)
 - [x] Autenticación JWT con cookies HttpOnly (login, refresh, logout, me)
 - [x] CRUD básico de cuentas (`/api/v1/accounts`) + página `/accounts`
+- [x] CRUD básico de categorías, tags y reglas de categorización
+- [x] CRUD básico de transacciones manuales + página `/transactions`
 - [ ] Upload y parseo de PDF
 - [ ] Dashboard mensual
-- [ ] Categorización por reglas
+- [ ] Aplicación automática de reglas sobre transacciones
 - [ ] Presupuestos y alertas
 - [ ] Exportación Excel
 - [ ] Tests
 
 ## Limitaciones actuales
 
-- **API parcial.** Existen `/health`, autenticación y CRUD básico de cuentas. Falta migrar transacciones, categorías, PDFs, presupuestos y dashboard real.
+- **API parcial.** Existen `/health`, autenticación, cuentas, categorías, tags, reglas y transacciones manuales. Falta migrar PDFs, presupuestos, dashboard real y aplicación automática de reglas.
 - **Auth v1 simplificada.** Usa JWT en cookies HttpOnly, sin Redis ni blacklist de sesiones. Refresh token es JWT firmado, no persistido en BD.
 - **Frontend mínimo.** Login y dashboard autenticado funcionan, pero el dashboard aún es placeholder.
 - **Sin tests.** `pytest` y `pytest-asyncio` están en dependencias pero no hay archivos de test.
@@ -179,6 +181,23 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 | `GET` | `/api/v1/accounts/{id}` | Obtiene una cuenta propia |
 | `PATCH` | `/api/v1/accounts/{id}` | Edita una cuenta propia |
 | `DELETE` | `/api/v1/accounts/{id}` | Elimina una cuenta propia |
+| `GET` | `/api/v1/categories` | Lista categorías |
+| `POST` | `/api/v1/categories` | Crea categoría |
+| `PATCH` | `/api/v1/categories/{id}` | Edita categoría |
+| `DELETE` | `/api/v1/categories/{id}` | Elimina categoría |
+| `GET` | `/api/v1/tags` | Lista tags del usuario |
+| `POST` | `/api/v1/tags` | Crea tag |
+| `PATCH` | `/api/v1/tags/{id}` | Edita tag |
+| `DELETE` | `/api/v1/tags/{id}` | Elimina tag |
+| `GET` | `/api/v1/category-rules` | Lista reglas del usuario |
+| `POST` | `/api/v1/category-rules` | Crea regla |
+| `PATCH` | `/api/v1/category-rules/{id}` | Edita regla |
+| `DELETE` | `/api/v1/category-rules/{id}` | Elimina regla |
+| `GET` | `/api/v1/transactions` | Lista transacciones del usuario con filtros básicos |
+| `POST` | `/api/v1/transactions` | Crea transacción manual |
+| `GET` | `/api/v1/transactions/{id}` | Obtiene transacción propia |
+| `PATCH` | `/api/v1/transactions/{id}` | Edita transacción propia |
+| `DELETE` | `/api/v1/transactions/{id}` | Elimina transacción propia |
 
 ## Estructura del proyecto
 
