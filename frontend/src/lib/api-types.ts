@@ -156,3 +156,13 @@ export interface StatementUploadResponse {
   uploaded_file: StatementUpload;
   imported_transactions: number;
 }
+
+export interface StatementPreview {
+  id: string;
+  account_id: string;
+  user_id: string;
+  filename: string;
+  bank_detected: string | null;
+  status: string;
+  rows: Array<{ date: string; description: string; amount: string; movement_type: "income" | "expense" }>;
+}

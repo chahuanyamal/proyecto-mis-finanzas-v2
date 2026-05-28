@@ -26,3 +26,24 @@ class UploadedFileOut(BaseModel):
 class StatementUploadResponse(BaseModel):
     uploaded_file: UploadedFileOut
     imported_transactions: int
+
+
+class StatementPreviewOut(BaseModel):
+    id: uuid.UUID
+    account_id: uuid.UUID
+    user_id: uuid.UUID
+    filename: str
+    bank_detected: str | None
+    status: str
+    rows: list[dict]
+
+    model_config = {"from_attributes": True}
+
+    @field_serializer("id", "account_id", "user_id")
+    def serialize_uuid(self, value: uuid.UUID) -> str:
+        return str(value)
+
+
+class StatementConfirmResponse(BaseModel):
+    uploaded_file: UploadedFileOut
+    imported_transactions: int

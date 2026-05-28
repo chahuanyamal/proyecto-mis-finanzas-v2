@@ -131,18 +131,18 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 - [x] Dashboard mensual real (`/api/v1/dashboard/monthly`)
 - [x] Auto-categorización por reglas y exportación Excel de transacciones
 - [x] Upload PDF + parser fallback básico + historial `/statements`
-- [ ] Parsers bancarios específicos y preview/confirmación avanzada
+- [x] Preview/confirmación/cancelación/reproceso básico de cartolas PDF
+- [x] Shell visual autenticado para navegación principal
+- [ ] Parsers bancarios específicos
 - [ ] Tests
 
 ## Limitaciones actuales
 
-- **API parcial.** Existen `/health`, autenticación, cuentas, categorías, tags, reglas, transacciones manuales, presupuestos, dashboard mensual, auto-categorización, export Excel y upload PDF con fallback básico. Falta migrar parsers bancarios específicos, preview/confirmación avanzada y reportes avanzados.
+- **API parcial.** Existen `/health`, autenticación, cuentas, categorías, tags, reglas, transacciones manuales, presupuestos, dashboard mensual, auto-categorización, export Excel y cartolas PDF con preview/confirmación básica. Falta migrar parsers bancarios específicos y reportes avanzados.
 - **Auth v1 simplificada.** Usa JWT en cookies HttpOnly, sin Redis ni blacklist de sesiones. Refresh token es JWT firmado, no persistido en BD.
-- **Frontend mínimo.** Login y dashboard autenticado funcionan, pero el dashboard aún es placeholder.
+- **Frontend v1.** Login, shell autenticado y pantallas CRUD principales funcionan; falta pulir UX/validaciones finas.
 - **Sin tests.** `pytest` y `pytest-asyncio` están en dependencias pero no hay archivos de test.
-- **PDF parsing no implementado.** `pdfplumber` y `pytesseract` están instalados pero sin código que los use.
-- **Exportación Excel no implementada.** `openpyxl` instalado pero sin uso.
-- **Sin manejo de archivos.** `python-multipart` instalado pero no hay endpoints de upload.
+- **PDF parsing básico.** El fallback usa `pdfplumber` con regex genérica; `pytesseract` está instalado para OCR futuro pero aún no se usa.
 - **Admin creado sin verificación de unicidad en seed concurrente.** El seed de bootstrap no usa locking; si múltiples instancias arrancan simultáneamente puede haber race condition (poco probable en deploy single-instance).
 - **El `SECRET_KEY` por defecto es inseguro.** Debe cambiarse en producción con `openssl rand -hex 32`.
 
@@ -207,6 +207,13 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 | `DELETE` | `/api/v1/budgets/{id}` | Elimina presupuesto propio |
 | `GET` | `/api/v1/dashboard/monthly` | Resumen mensual de ingresos, gastos y presupuestos |
 | `GET` | `/api/v1/statements` | Lista PDFs subidos por el usuario |
+| `GET` | `/api/v1/statements/previews` | Lista previews pendientes del usuario |
+| `POST` | `/api/v1/statements/preview` | Sube PDF, parsea fallback y guarda preview pendiente |
+| `GET` | `/api/v1/statements/previews/{id}` | Obtiene un preview propio |
+| `POST` | `/api/v1/statements/previews/{id}/confirm` | Confirma preview e importa transacciones |
+| `POST` | `/api/v1/statements/previews/{id}/cancel` | Cancela preview pendiente |
+| `GET` | `/api/v1/statements/history/{id}` | Detalle de una cartola importada y sus transacciones |
+| `POST` | `/api/v1/statements/history/{id}/reprocess` | Reprocesa una cartola importada |
 | `POST` | `/api/v1/statements/upload` | Sube PDF y aplica parser fallback básico |
 
 ## Estructura del proyecto

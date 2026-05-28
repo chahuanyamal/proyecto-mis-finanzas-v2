@@ -12,6 +12,7 @@ import type {
   LoginResponse,
   MonthlyDashboard,
   StatementUpload,
+  StatementPreview,
   StatementUploadResponse,
   Tag,
   TagPayload,
@@ -121,6 +122,19 @@ export const dashboardApi = {
 
 export const statementsApi = {
   list: () => api.get<StatementUpload[]>("/v1/statements"),
+  previews: () => api.get<StatementPreview[]>("/v1/statements/previews"),
+  preview: (accountId: string, file: File) => {
+    const data = new FormData();
+    data.append("file", file);
+    return api.post<StatementPreview>("/v1/statements/preview", data, {
+      params: { account_id: accountId },
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  confirm: (previewId: string) => api.post<StatementUploadResponse>(`/v1/statements/previews/${previewId}/confirm`),
+  cancel: (previewId: string) => api.post<{ ok: boolean }>(`/v1/statements/previews/${previewId}/cancel`),
+  detail: (uploadedFileId: string) => api.get(`/v1/statements/history/${uploadedFileId}`),
+  reprocess: (uploadedFileId: string) => api.post<StatementUploadResponse>(`/v1/statements/history/${uploadedFileId}/reprocess`),
   upload: (accountId: string, file: File) => {
     const data = new FormData();
     data.append("file", file);
