@@ -85,20 +85,30 @@ export default function CategoriesPage() {
           {error ? <p className="mt-5 rounded bg-red-950/50 px-3 py-2 text-sm text-red-200">{error}</p> : null}
           {isLoading ? <p className="mt-8 flex gap-2 text-slate-400"><Loader2 className="animate-spin" /> Cargando...</p> : (
             <div className="mt-6 grid gap-3 md:grid-cols-2">
-              {categories.map((category) => (
+              {categories.map((category) => {
+                const isSystem = category.user_id === null;
+                return (
                 <div key={category.id} className="rounded border border-slate-800 bg-black/30 p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-semibold">{category.icon ? `${category.icon} ` : ""}{category.name}</p>
+                      <p className="font-semibold">
+                        {category.icon ? `${category.icon} ` : ""}{category.name}
+                        {isSystem ? <span className="ml-2 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">Sistema</span> : null}
+                      </p>
                       <p className="text-xs text-slate-500">Padre: {categories.find((item) => item.id === category.parent_id)?.name ?? "-"}</p>
                     </div>
-                    <div className="flex gap-3">
-                      <button type="button" onClick={() => edit(category)} className="text-brand-300">Editar</button>
-                      <button type="button" onClick={() => void remove(category.id)} className="text-red-300"><Trash2 size={16} /></button>
-                    </div>
+                    {isSystem ? (
+                      <span className="text-xs text-slate-500">Solo lectura</span>
+                    ) : (
+                      <div className="flex gap-3">
+                        <button type="button" onClick={() => edit(category)} className="text-brand-300">Editar</button>
+                        <button type="button" onClick={() => void remove(category.id)} className="text-red-300"><Trash2 size={16} /></button>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

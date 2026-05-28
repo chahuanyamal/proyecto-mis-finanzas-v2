@@ -27,6 +27,7 @@ from app.models.user import User
 from app.modules.auth.deps import get_current_user
 from app.modules.accounts.schemas import AccountOut
 from app.modules.categories.schemas import CategoryOut
+from app.modules.categories.service import ensure_category_visible
 from app.modules.tags.schemas import TagOut
 from app.modules.transactions.schemas import (
     BulkCategoryIn,
@@ -57,6 +58,7 @@ _LOAD_OPTIONS = (
 def _to_out(tx: Transaction) -> TransactionOut:
     return TransactionOut(
         id=tx.id,
+        user_id=tx.user_id,
         uploaded_file_id=tx.uploaded_file_id,
         account_id=tx.account_id,
         category_id=tx.category_id,
@@ -94,14 +96,6 @@ async def _account_or_404(account_id: uuid.UUID, db: AsyncSession, current_user:
     if account is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuenta no encontrada")
     return account
-
-
-async def _category_or_404(category_id: uuid.UUID | None, db: AsyncSession) -> None:
-    if category_id is None:
-        return
-    result = await db.execute(select(Category.id).where(Category.id == category_id))
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Categoría no encontrada")
 
 
 async def _transaction_or_404(transaction_id: uuid.UUID, db: AsyncSession, current_user: User) -> Transaction:
@@ -551,7 +545,7 @@ async def bulk_set_category(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, int]:
-    await _category_or_404(body.category_id, db)
+    await ensure_category_visible(body.category_id, db, current_user.id)
     transactions = await _owned_transactions(body.transaction_ids, db, current_user)
     for tx in transactions:
         tx.category_id = body.category_id
@@ -598,7 +592,7 @@ async def create_transaction(
     current_user: User = Depends(get_current_user),
 ) -> TransactionOut:
     account = await _account_or_404(body.account_id, db, current_user)
-    await _category_or_404(body.category_id, db)
+    await ensure_category_visible(body.category_id, db, current_user.id)
     uploaded_file = await _manual_uploaded_file(account, db, current_user)
     transaction = Transaction(uploaded_file_id=uploaded_file.id, user_id=current_user.id, **body.model_dump())
     db.add(transaction)
@@ -625,7 +619,7 @@ async def update_transaction(
     if "account_id" in changes and changes["account_id"] is not None:
         await _account_or_404(changes["account_id"], db, current_user)
     if "category_id" in changes:
-        await _category_or_404(changes["category_id"], db)
+        await ensure_category_visible(changes["category_id"], db, current_user.id)
     for field, value in changes.items():
         setattr(transaction, field, value)
     await db.commit()
@@ -715,7 +709,7 @@ async def set_splits(
     if total > Decimal(transaction.amount):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "La suma de los repartos supera el monto de la transacción")
     for part in body:
-        await _category_or_404(part.category_id, db)
+        await ensure_category_visible(part.category_id, db, current_user.id)
     await db.execute(
         TransactionSplit.__table__.delete().where(TransactionSplit.transaction_id == transaction.id)
     )

@@ -38,6 +38,7 @@ export interface AccountPayload {
 
 export interface Category {
   id: string;
+  user_id: string | null;
   name: string;
   parent_id: string | null;
   color: string | null;
@@ -93,6 +94,7 @@ export interface TransactionSplit {
 
 export interface Transaction {
   id: string;
+  user_id: string;
   uploaded_file_id: string;
   account_id: string;
   category_id: string | null;

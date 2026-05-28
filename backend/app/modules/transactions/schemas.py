@@ -65,6 +65,7 @@ class SplitOut(BaseModel):
 
 class TransactionOut(BaseModel):
     id: uuid.UUID
+    user_id: uuid.UUID
     uploaded_file_id: uuid.UUID
     account_id: uuid.UUID
     category_id: uuid.UUID | None
@@ -85,7 +86,7 @@ class TransactionOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @field_serializer("id", "uploaded_file_id", "account_id", "category_id")
+    @field_serializer("id", "user_id", "uploaded_file_id", "account_id", "category_id")
     def serialize_uuid(self, value: uuid.UUID | None) -> str | None:
         return str(value) if value is not None else None
 

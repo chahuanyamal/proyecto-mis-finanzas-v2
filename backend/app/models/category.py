@@ -14,6 +14,11 @@ class Category(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True, default=uuid.uuid4
     )
+    # NULL = categoría del sistema (compartida, solo lectura). Con valor =
+    # categoría propia del usuario, editable únicamente por su dueño.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
@@ -21,6 +26,7 @@ class Category(Base):
     color: Mapped[str | None] = mapped_column(String(9), nullable=True)
     icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    user = relationship("User")
     parent = relationship("Category", remote_side="Category.id", back_populates="children")
     children = relationship("Category", back_populates="parent")
     transactions = relationship("Transaction", back_populates="category")

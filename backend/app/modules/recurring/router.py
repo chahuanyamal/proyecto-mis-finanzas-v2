@@ -7,21 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.category import Category
 from app.models.recurring import RecurringExpense
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
+from app.modules.categories.service import ensure_category_visible
 from app.modules.recurring.schemas import RecurringCreate, RecurringOut, RecurringUpdate
 
 router = APIRouter(prefix="/api/v1/recurring", tags=["recurring"])
-
-
-async def _category_or_404(category_id: uuid.UUID | None, db: AsyncSession) -> None:
-    if category_id is None:
-        return
-    result = await db.execute(select(Category.id).where(Category.id == category_id))
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Categoría no encontrada")
 
 
 async def _item_or_404(item_id: uuid.UUID, db: AsyncSession, current_user: User) -> RecurringExpense:
@@ -55,7 +47,7 @@ async def create_recurring(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> RecurringExpense:
-    await _category_or_404(body.category_id, db)
+    await ensure_category_visible(body.category_id, db, current_user.id)
     item = RecurringExpense(user_id=current_user.id, **body.model_dump())
     db.add(item)
     await db.commit()
@@ -73,7 +65,7 @@ async def update_recurring(
     item = await _item_or_404(item_id, db, current_user)
     changes = body.model_dump(exclude_unset=True)
     if "category_id" in changes:
-        await _category_or_404(changes["category_id"], db)
+        await ensure_category_visible(changes["category_id"], db, current_user.id)
     for field, value in changes.items():
         setattr(item, field, value)
     await db.commit()
