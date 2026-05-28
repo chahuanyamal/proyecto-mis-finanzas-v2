@@ -82,6 +82,15 @@ export interface CategoryRulePayload {
   priority: number;
 }
 
+export interface TransactionSplit {
+  id: string;
+  transaction_id: string;
+  category_id: string | null;
+  amount: string;
+  notes: string | null;
+  category: Category | null;
+}
+
 export interface Transaction {
   id: string;
   uploaded_file_id: string;
@@ -92,8 +101,15 @@ export interface Transaction {
   amount: string;
   currency: string;
   movement_type: "income" | "expense";
+  notes: string | null;
+  is_flagged: boolean;
+  flag_reason: string | null;
+  is_internal_transfer: boolean;
+  is_duplicate: boolean;
   account: Account | null;
   category: Category | null;
+  tags: Tag[];
+  splits: TransactionSplit[];
 }
 
 export interface TransactionPayload {
@@ -104,6 +120,19 @@ export interface TransactionPayload {
   amount: string;
   currency: string;
   movement_type: Transaction["movement_type"];
+  notes?: string | null;
+}
+
+export interface SplitPayload {
+  category_id?: string | null;
+  amount: string;
+  notes?: string | null;
+}
+
+export interface TransactionSummary {
+  total_count: number;
+  uncategorized_count: number;
+  by_currency: Record<string, { income: string; expense: string; count: number }>;
 }
 
 export interface Budget {
@@ -158,6 +187,11 @@ export interface StatementUploadResponse {
   possible_duplicates: string[];
 }
 
+export interface StatementDetail {
+  uploaded_file: StatementUpload;
+  transactions: Transaction[];
+}
+
 export interface PreviewRow {
   date: string;
   description: string;
@@ -187,9 +221,16 @@ export interface StatementPreview {
 export interface TransactionFilters {
   account_id?: string;
   category_id?: string;
+  statement_id?: string;
   start_date?: string;
   end_date?: string;
+  movement_type?: "income" | "expense";
+  currency?: string;
   search?: string;
+  only_uncategorized?: boolean;
+  only_flagged?: boolean;
+  exclude_internal?: boolean;
+  exclude_duplicates?: boolean;
   limit?: number;
   offset?: number;
 }

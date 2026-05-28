@@ -19,7 +19,9 @@ import type {
   RecurringPayload,
   Settings,
   SettingsPayload,
+  SplitPayload,
   StatementUpload,
+  StatementDetail,
   StatementPreview,
   StatementUploadResponse,
   Tag,
@@ -27,6 +29,7 @@ import type {
   Transaction,
   TransactionFilters,
   TransactionPayload,
+  TransactionSummary,
   User,
 } from "@/lib/api-types";
 
@@ -111,11 +114,27 @@ export const rulesApi = {
 export const transactionsApi = {
   list: (filters?: TransactionFilters) =>
     api.get<Transaction[]>("/v1/transactions", { params: filters }),
+  summary: (filters?: TransactionFilters) =>
+    api.get<TransactionSummary>("/v1/transactions/summary", { params: filters }),
   create: (payload: TransactionPayload) => api.post<Transaction>("/v1/transactions", payload),
-  update: (id: string, payload: Partial<TransactionPayload>) => api.patch<Transaction>(`/v1/transactions/${id}`, payload),
+  update: (id: string, payload: Partial<TransactionPayload> & { is_internal_transfer?: boolean; is_duplicate?: boolean }) =>
+    api.patch<Transaction>(`/v1/transactions/${id}`, payload),
   remove: (id: string) => api.delete(`/v1/transactions/${id}`),
   autoCategorize: () => api.post<{ updated: number }>("/v1/transactions/auto-categorize"),
+  setNotes: (id: string, notes: string | null) => api.patch<Transaction>(`/v1/transactions/${id}/notes`, { notes }),
+  setFlag: (id: string, is_flagged: boolean, reason?: string | null) =>
+    api.patch<Transaction>(`/v1/transactions/${id}/flag`, { is_flagged, reason }),
+  setTags: (id: string, tag_ids: string[]) => api.patch<Transaction>(`/v1/transactions/${id}/tags`, { tag_ids }),
+  setSplits: (id: string, splits: SplitPayload[]) => api.post<Transaction>(`/v1/transactions/${id}/split`, splits),
+  clearSplits: (id: string) => api.delete<Transaction>(`/v1/transactions/${id}/splits`),
+  bulkCategory: (transaction_ids: string[], category_id: string | null) =>
+    api.patch<{ updated: number }>("/v1/transactions/bulk/category", { transaction_ids, category_id }),
+  bulkTags: (transaction_ids: string[], tag_ids: string[]) =>
+    api.patch<{ updated: number }>("/v1/transactions/bulk/tags", { transaction_ids, tag_ids }),
+  bulkDelete: (transaction_ids: string[]) =>
+    api.delete<{ deleted: number }>("/v1/transactions/bulk", { data: { transaction_ids } }),
   exportExcelUrl: () => "/api/v1/transactions/export/excel",
+  exportCsvUrl: () => "/api/v1/transactions/export/csv",
 };
 
 export const budgetsApi = {
@@ -173,7 +192,7 @@ export const statementsApi = {
     api.get<{ duplicates: string[] }>(`/v1/statements/previews/${previewId}/duplicates`),
   confirm: (previewId: string) => api.post<StatementUploadResponse>(`/v1/statements/previews/${previewId}/confirm`),
   cancel: (previewId: string) => api.post<{ ok: boolean }>(`/v1/statements/previews/${previewId}/cancel`),
-  detail: (uploadedFileId: string) => api.get(`/v1/statements/history/${uploadedFileId}`),
+  detail: (uploadedFileId: string) => api.get<StatementDetail>(`/v1/statements/history/${uploadedFileId}`),
   reprocess: (uploadedFileId: string) => api.post<StatementUploadResponse>(`/v1/statements/history/${uploadedFileId}/reprocess`),
   upload: (accountId: string, file: File) => {
     const data = new FormData();
