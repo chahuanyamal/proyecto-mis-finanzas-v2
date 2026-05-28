@@ -2,24 +2,641 @@
 @tailwind components;
 @tailwind utilities;
 
+
+/* ─── Bloomberg-terminal design tokens ──────────────────────────────────── */
+:root {
+  --radius: 0;
+  --sidebar-width: 220px;
+  --sidebar-collapsed-width: 64px;
+  --topnav-height: 48px;
+  --statusbar-height: 22px;
+
+  --bb-bg: #000000;
+  --bb-surface: #050505;
+  --bb-surface-2: #0a0a0a;
+  --bb-border: #2a2a2a;
+  --bb-border-soft: #1a1a1a;
+  --bb-text: #e6e6e6;
+  --bb-text-dim: #909090;
+  --bb-text-muted: #6a6a6a;
+  --bb-amber: #ff8a00;
+  --bb-amber-bright: #ffa620;
+  --bb-green: #00d26a;
+  --bb-red: #ff3b3b;
+  --bb-yellow: #ffd700;
+  --bb-cyan: #00d2ff;
+
+  /* Aliases para compatibilidad con código previo. */
+  --color-bg: var(--bb-bg);
+  --color-surface: var(--bb-surface);
+  --color-border: var(--bb-border);
+  --color-text: var(--bb-text);
+  --color-muted: var(--bb-text-dim);
+  --color-accent: var(--bb-amber);
+}
+
+html {
+  background-color: var(--bb-bg);
+  color: var(--bb-text);
+  font-family: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Consolas, monospace;
+  /* kern: interletraje; liga/calt: ligaduras contextuales; zero: cero con barra; ss01: 'l' alternativa */
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1, "zero" 1, "ss01" 1;
+  font-variant-numeric: tabular-nums;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--bb-bg);
+  color: var(--bb-text);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+}
+
+/* ─── Jerarquía tipográfica terminal ───────────────────────────────────── */
+/* Tamaños deliberadamente compactos (densidad Bloomberg) pero con peso
+   y tracking diferenciados para jerarquía visual sin aumentar altura. */
+h1 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--bb-text);
+}
+h2 {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  color: var(--bb-text);
+}
+h3 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.4;
+}
+h4 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bb-text-dim);
+}
+p {
+  line-height: 1.6;
+}
+
+/* Números siempre tabulares y sin ligaduras para alineación perfecta */
+.tabular-nums,
+[class*="font-mono"],
+[class*="font-bold"],
+td,
+th {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+/* ─── Scrollbar terminal — ultra delgada ────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--bb-amber);
+}
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a2a transparent;
+}
+
+::selection {
+  background: var(--bb-amber);
+  color: #000;
+}
+
+/* ─── Focus global: anillo naranja fino ─────────────────────────────────── */
+:focus-visible {
+  outline: 1px solid var(--bb-amber);
+  outline-offset: 1px;
+}
+/* Resetear el outline nativo en elementos que ya tienen su propio estilo */
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 1px solid var(--bb-amber);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(255, 138, 0, 0.15);
+}
+
+/* ─── Base ──────────────────────────────────────────────────────────────── */
 @layer base {
-  :root {
-    --color-surface: 15 23 42;
-    --color-ink: 248 250 252;
-    --color-brand: 245 158 11;
-    --color-positive: 34 197 94;
-    --color-negative: 239 68 68;
+  * {
+    border-color: var(--bb-border-soft);
+    box-sizing: border-box;
   }
-
-  .light {
-    --color-surface: 248 250 252;
-    --color-ink: 15 23 42;
-    --color-brand: 217 119 6;
+  html {
+    background: var(--bb-bg);
+    color: var(--bb-text);
   }
-
   body {
-    background-color: rgb(var(--color-surface));
-    color: rgb(var(--color-ink));
-    font-family: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+    background: var(--bb-bg);
+    min-height: 100vh;
   }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5 {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--bb-text);
+  }
+  hr {
+    border-color: var(--bb-border);
+  }
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Inputs nativos sin look del SO. */
+  select,
+  input,
+  textarea {
+    background: var(--bb-surface);
+    color: var(--bb-text);
+    border-color: var(--bb-border);
+    font-family: inherit;
+  }
+}
+
+/* ─── Components ────────────────────────────────────────────────────────── */
+@layer components {
+  /* ── Cards: caja plana con borde de 1px, sin sombra ni blur. ───────── */
+  .card {
+    background: var(--bb-surface);
+    border: 1px solid var(--bb-border);
+    border-radius: 0;
+    color: var(--bb-text);
+    box-shadow: none;
+    transition: border-color 120ms linear;
+  }
+  .card:hover {
+    border-color: #3a3a3a;
+  }
+  /* Cuando una .card vive dentro de un contenedor Newsroom, se adapta al tema */
+  [data-newsroom] .card {
+    background: var(--nr-surface);
+    border: 1px solid var(--nr-hair);
+    border-radius: 14px;
+    color: var(--nr-ink);
+  }
+  [data-newsroom] .card:hover {
+    border-color: var(--nr-hair-strong);
+  }
+  .card-elevated {
+    background: var(--bb-surface-2);
+    border: 1px solid var(--bb-border);
+    border-radius: 0;
+    color: var(--bb-text);
+  }
+  .card-solid {
+    background: var(--bb-surface-2);
+    border: 1px solid var(--bb-border);
+    border-radius: 0;
+  }
+
+  /* ── Buttons: bloques rectos, mono, mayúsculas. ────────────────────── */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5
+           text-[11px] font-semibold uppercase tracking-wider
+           transition-colors duration-100
+           focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-400
+           disabled:opacity-40 disabled:cursor-not-allowed;
+    background: var(--bb-amber);
+    color: #000;
+    border: 1px solid var(--bb-amber);
+    border-radius: 0;
+  }
+  .btn-primary:hover {
+    background: var(--bb-amber-bright);
+    border-color: var(--bb-amber-bright);
+  }
+  .btn-primary:active {
+    background: var(--bb-amber);
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5
+           text-[11px] font-medium uppercase tracking-wider
+           transition-colors duration-100
+           focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-400;
+    background: transparent;
+    color: var(--bb-text-dim);
+    border: 1px solid var(--bb-border);
+    border-radius: 0;
+  }
+  .btn-ghost:hover {
+    color: var(--bb-amber);
+    border-color: var(--bb-amber);
+    background: rgba(255, 138, 0, 0.06);
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5
+           text-[11px] font-semibold uppercase tracking-wider
+           transition-colors duration-100;
+    background: transparent;
+    color: var(--bb-red);
+    border: 1px solid var(--bb-red);
+    border-radius: 0;
+  }
+  .btn-danger:hover {
+    background: var(--bb-red);
+    color: #000;
+  }
+
+  /* ── Inputs ─────────────────────────────────────────────────────────── */
+  .input {
+    @apply w-full px-2 py-1.5 text-[12.5px]
+           transition-colors duration-100
+           focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    background: #030303;
+    color: var(--bb-text);
+    border: 1px solid #1e1e1e;
+    border-bottom-color: #2a2a2a;
+    border-radius: 0;
+    font-family: inherit;
+    letter-spacing: 0.01em;
+  }
+  .input::placeholder {
+    color: #555;
+    font-style: italic;
+  }
+  .input:hover {
+    border-color: #2a2a2a;
+    border-bottom-color: #3a3a3a;
+  }
+  .input:focus {
+    border-color: var(--bb-amber);
+    border-bottom-width: 2px;
+    box-shadow: 0 2px 0 0 rgba(255, 138, 0, 0.2);
+    outline: none;
+  }
+  /* Select nativo */
+  select.input {
+    cursor: pointer;
+  }
+  select.input option {
+    background: #0a0a0a;
+    color: var(--bb-text);
+  }
+
+  /* ── Labels & Badges ────────────────────────────────────────────────── */
+  .label {
+    @apply text-[10px] uppercase tracking-[0.15em] font-semibold mb-1;
+    color: var(--bb-text-dim);
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-1.5 py-[1px]
+           text-[10px] uppercase tracking-wider font-bold;
+    border-radius: 0;
+    border: 1px solid;
+  }
+  .badge-income {
+    @apply badge;
+    color: var(--bb-green);
+    border-color: var(--bb-green);
+    background: rgba(0, 210, 106, 0.08);
+  }
+  .badge-expense {
+    @apply badge;
+    color: var(--bb-red);
+    border-color: var(--bb-red);
+    background: rgba(255, 59, 59, 0.08);
+  }
+  .badge-warning {
+    @apply badge;
+    color: var(--bb-yellow);
+    border-color: var(--bb-yellow);
+    background: rgba(255, 215, 0, 0.08);
+  }
+  .badge-brand {
+    @apply badge;
+    color: var(--bb-amber);
+    border-color: var(--bb-amber);
+    background: rgba(255, 138, 0, 0.08);
+  }
+
+  /* ── Skeleton ───────────────────────────────────────────────────────── */
+  .skeleton {
+    @apply bg-gradient-to-r from-[#0a0a0a] via-[#1a1a1a] to-[#0a0a0a]
+           bg-[length:200%_100%] animate-shimmer;
+    border-radius: 0;
+  }
+
+  /* ── Money ──────────────────────────────────────────────────────────── */
+  .money-positive {
+    color: var(--bb-green);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .money-negative {
+    color: var(--bb-red);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .money-neutral {
+    color: var(--bb-text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Sidebar (Bloomberg style) ──────────────────────────────────────── */
+  .navy-sidebar {
+    background: var(--bb-bg);
+    border-right: 1px solid var(--bb-border);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .sidebar-link {
+    @apply flex items-center gap-2 px-2 py-1 text-[11px] uppercase tracking-wider transition-colors duration-100;
+    color: var(--bb-text-dim);
+    border-left: 2px solid transparent;
+    border-radius: 0;
+  }
+  .sidebar-link:hover {
+    background: #0a0a0a;
+    color: var(--bb-amber);
+  }
+  .sidebar-link.active {
+    background: rgba(255, 138, 0, 0.08);
+    color: var(--bb-amber);
+    border-left: 2px solid var(--bb-amber);
+    box-shadow: none;
+  }
+  .sidebar-section {
+    @apply text-[9px] uppercase tracking-[0.25em] font-bold;
+    color: #777;
+    padding: 0.85rem 0.5rem 0.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .sidebar-section::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #222;
+    margin-left: 0.2rem;
+  }
+
+  /* ── Tabla terminal ─────────────────────────────────────────────────── */
+  .table-terminal {
+    @apply w-full text-[11px] font-mono;
+    border-collapse: collapse;
+  }
+  .table-terminal thead th {
+    @apply text-left uppercase tracking-wider font-semibold;
+    color: var(--bb-text-dim);
+    background: #050505;
+    border-bottom: 1px solid var(--bb-border);
+    padding: 4px 8px;
+  }
+  .table-terminal tbody td {
+    border-bottom: 1px solid var(--bb-border-soft);
+    padding: 4px 8px;
+    color: var(--bb-text);
+  }
+  .table-terminal tbody tr {
+    transition: background 80ms linear;
+  }
+  .table-terminal tbody tr:hover {
+    background: #0d0d0d;
+    outline: 1px solid #2a2a2a;
+    outline-offset: -1px;
+    box-shadow: 0 0 12px rgba(255, 138, 0, 0.03);
+  }
+  .table-terminal tbody tr:hover td:first-child {
+    border-left: 2px solid var(--bb-amber);
+    box-shadow: -2px 0 12px rgba(255, 138, 0, 0.06);
+  }
+
+  /* ── Statusbar / Function keys ──────────────────────────────────────── */
+  .statusbar {
+    background: var(--bb-amber);
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    height: var(--statusbar-height);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 16px;
+  }
+  .fkey {
+    @apply inline-flex items-center gap-1 px-2 py-[2px] text-[10px] uppercase tracking-wider;
+    background: transparent;
+    color: var(--bb-text-dim);
+    border: 1px solid var(--bb-border);
+    border-radius: 0;
+  }
+  .fkey:hover {
+    border-color: var(--bb-amber);
+    color: var(--bb-amber);
+  }
+  .fkey-active {
+    border-color: var(--bb-amber);
+    color: var(--bb-amber);
+    background: rgba(255, 138, 0, 0.1);
+  }
+
+  /* ── Strip headers (terminal-style) ─────────────────────────────────── */
+  .strip {
+    @apply flex items-center justify-between border-b border-[#2a2a2a] bg-[#050505] px-3 py-1.5;
+  }
+  .strip-title {
+    @apply flex items-center gap-2;
+  }
+  .strip-title .dot {
+    @apply w-2 h-2 bg-brand-500;
+  }
+  .strip-code {
+    @apply text-[10px] uppercase tracking-[0.22em] text-brand-500 font-bold;
+    letter-spacing: 0.22em;
+  }
+  .strip-meta {
+    @apply text-[10.5px] uppercase tracking-widest text-slate-400;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+  }
+
+  /* Section title (mid-page) */
+  .h-title {
+    @apply text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500;
+  }
+
+  /* ── Caret blink ────────────────────────────────────────────────────── */
+  .caret::after {
+    content: "_";
+    color: var(--bb-amber);
+    animation: blink 1s steps(2) infinite;
+    margin-left: 2px;
+  }
+}
+
+/* ─── Utilities ─────────────────────────────────────────────────────────── */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* `.glass` se mantiene como utility legacy — la convertimos en superficie plana. */
+  .glass {
+    background: var(--bb-surface);
+    border: 1px solid var(--bb-border);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+  }
+  .glass-strong {
+    background: var(--bb-surface-2);
+    border: 1px solid var(--bb-border);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .gradient-text {
+    color: var(--bb-amber);
+    background: none;
+    -webkit-background-clip: initial;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  .glow-ring {
+    box-shadow: 0 0 4px var(--bb-amber);
+  }
+
+  /* ── Staggered section entrance ─────────────────────────────────────── */
+  .dash-section {
+    animation: dashSectionIn 0.35s ease-out both;
+  }
+  .dash-section:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .dash-section:nth-child(2) {
+    animation-delay: 60ms;
+  }
+  .dash-section:nth-child(3) {
+    animation-delay: 120ms;
+  }
+  .dash-section:nth-child(4) {
+    animation-delay: 180ms;
+  }
+  .dash-section:nth-child(5) {
+    animation-delay: 240ms;
+  }
+  .dash-section:nth-child(6) {
+    animation-delay: 300ms;
+  }
+  .dash-section:nth-child(7) {
+    animation-delay: 360ms;
+  }
+  .dash-section:nth-child(8) {
+    animation-delay: 420ms;
+  }
+  @keyframes dashSectionIn {
+    0% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .text-helper {
+    color: var(--bb-text-dim);
+  }
+  .text-metadata {
+    color: var(--bb-text);
+  }
+  .text-accessible {
+    color: var(--bb-text-dim);
+  }
+
+  /* Grid de fondo opcional para feel de pantalla CRT. */
+  .crt-grid {
+    background-image: linear-gradient(rgba(255, 138, 0, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 138, 0, 0.025) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .scanlines::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.012) 0px,
+      rgba(255, 255, 255, 0.012) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 1;
+  }
+}
+
+/* ─── Universe background legacy: neutralizado a fondo plano. ───────────── */
+.universe-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--bb-bg);
+}
+.universe-star {
+  display: none;
+}
+
+/* ─── Accesibilidad ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton {
+    animation: none !important;
+    background: #1a1a1a;
+  }
+  .caret::after {
+    animation: none;
+  }
+}
+
+/* ─── Keyframes para uso en CSS puro (no vía @apply) ───────────────────── */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
