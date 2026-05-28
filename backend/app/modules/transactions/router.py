@@ -278,6 +278,133 @@ async def transactions_summary(
     )
 
 
+@router.get("/by-category")
+async def transactions_by_category(
+    account_id: uuid.UUID | None = None,
+    start_date: datetime.date | None = None,
+    end_date: datetime.date | None = None,
+    currency: str | None = Query(default=None, max_length=3),
+    exclude_internal: bool = False,
+    exclude_duplicates: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    """Totales por categoría (ingreso/egreso/conteo) en un rango. Usado por Comparar e Insights."""
+    base = (
+        select(
+            Transaction.category_id,
+            Category.name,
+            Transaction.movement_type,
+            func.coalesce(func.sum(Transaction.amount), 0),
+            func.count(),
+        )
+        .join(Account)
+        .outerjoin(Category, Category.id == Transaction.category_id)
+        .where(Account.user_id == current_user.id)
+    )
+    base = _apply_filters(
+        base,
+        account_id=account_id,
+        category_id=None,
+        statement_id=None,
+        start_date=start_date,
+        end_date=end_date,
+        movement_type=None,
+        currency=currency,
+        search=None,
+        only_uncategorized=False,
+        only_flagged=False,
+        exclude_internal=exclude_internal,
+        exclude_duplicates=exclude_duplicates,
+    ).group_by(Transaction.category_id, Category.name, Transaction.movement_type)
+    rows = (await db.execute(base)).all()
+
+    agg: dict[str, dict] = {}
+    for category_id, name, mtype, total, count in rows:
+        key = str(category_id) if category_id is not None else "uncategorized"
+        bucket = agg.setdefault(
+            key,
+            {
+                "category_id": str(category_id) if category_id is not None else None,
+                "category_name": name or "Sin categoría",
+                "income": Decimal("0"),
+                "expense": Decimal("0"),
+                "count": 0,
+            },
+        )
+        if mtype == "income":
+            bucket["income"] = Decimal(total)
+        else:
+            bucket["expense"] = Decimal(total)
+        bucket["count"] += int(count)
+
+    result = [
+        {
+            "category_id": v["category_id"],
+            "category_name": v["category_name"],
+            "income": str(v["income"]),
+            "expense": str(v["expense"]),
+            "count": v["count"],
+        }
+        for v in agg.values()
+    ]
+    result.sort(key=lambda r: Decimal(r["expense"]), reverse=True)
+    return result
+
+
+@router.get("/by-month")
+async def transactions_by_month(
+    months: int = Query(default=12, ge=1, le=36),
+    account_id: uuid.UUID | None = None,
+    currency: str | None = Query(default=None, max_length=3),
+    exclude_internal: bool = False,
+    exclude_duplicates: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    """Serie mensual ingreso/egreso de los últimos N meses. Usado por Insights."""
+    today = datetime.date.today()
+    start_month = (today.replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
+    for _ in range(months - 1):
+        start_month = (start_month - datetime.timedelta(days=1)).replace(day=1)
+
+    month_expr = func.to_char(Transaction.date, "YYYY-MM")
+    base = (
+        select(month_expr, Transaction.movement_type, func.coalesce(func.sum(Transaction.amount), 0))
+        .join(Account)
+        .where(Account.user_id == current_user.id, Transaction.date >= start_month)
+    )
+    base = _apply_filters(
+        base,
+        account_id=account_id,
+        category_id=None,
+        statement_id=None,
+        start_date=None,
+        end_date=None,
+        movement_type=None,
+        currency=currency,
+        search=None,
+        only_uncategorized=False,
+        only_flagged=False,
+        exclude_internal=exclude_internal,
+        exclude_duplicates=exclude_duplicates,
+    ).group_by(month_expr, Transaction.movement_type)
+    rows = (await db.execute(base)).all()
+
+    series: dict[str, dict] = {}
+    for month, mtype, total in rows:
+        bucket = series.setdefault(month, {"month": month, "income": Decimal("0"), "expense": Decimal("0")})
+        if mtype == "income":
+            bucket["income"] = Decimal(total)
+        else:
+            bucket["expense"] = Decimal(total)
+
+    return [
+        {"month": m["month"], "income": str(m["income"]), "expense": str(m["expense"])}
+        for m in sorted(series.values(), key=lambda x: x["month"])
+    ]
+
+
 async def _filtered_rows_for_export(
     db: AsyncSession,
     current_user: User,
