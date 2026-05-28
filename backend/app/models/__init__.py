@@ -9,6 +9,7 @@ from app.models.statement_preview import StatementPreview
 from app.models.uploaded_file import UploadedFile
 from app.models.tag import Tag
 from app.models.transaction import Transaction
+from app.models.transaction_split import TransactionSplit
 from app.models.transaction_tag import TransactionTag
 from app.models.user import User
 
@@ -26,4 +27,5 @@ __all__ = [
     "RecurringExpense",
     "Tag",
     "TransactionTag",
+    "TransactionSplit",
 ]

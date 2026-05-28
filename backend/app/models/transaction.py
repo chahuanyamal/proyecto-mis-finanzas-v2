@@ -4,7 +4,7 @@ import uuid
 import datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -52,6 +52,11 @@ class Transaction(Base, TimestampMixin):
     movement_type: Mapped[str] = mapped_column(
         String(10), nullable=False
     )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_flagged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    flag_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_internal_transfer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_duplicate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     user = relationship("User")
     uploaded_file = relationship("UploadedFile", back_populates="transactions")
@@ -60,4 +65,7 @@ class Transaction(Base, TimestampMixin):
     category_rule = relationship("CategoryRule", back_populates="transactions")
     tags = relationship(
         "TransactionTag", back_populates="transaction", cascade="all, delete-orphan"
+    )
+    splits = relationship(
+        "TransactionSplit", back_populates="transaction", cascade="all, delete-orphan"
     )
