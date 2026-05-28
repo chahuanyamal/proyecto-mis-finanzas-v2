@@ -2,7 +2,9 @@ from app.models.account import Account
 from app.models.budget import Budget
 from app.models.category import Category
 from app.models.category_rule import CategoryRule
+from app.models.goal import Goal
 from app.models.institution import Institution
+from app.models.recurring import RecurringExpense
 from app.models.statement_preview import StatementPreview
 from app.models.uploaded_file import UploadedFile
 from app.models.tag import Tag
@@ -20,6 +22,8 @@ __all__ = [
     "Transaction",
     "CategoryRule",
     "Budget",
+    "Goal",
+    "RecurringExpense",
     "Tag",
     "TransactionTag",
 ]
