@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -11,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.models.account import Account
 from app.models.category import Category
+from app.models.category_rule import CategoryRule
 from app.models.transaction import Transaction
 from app.models.uploaded_file import UploadedFile
 from app.models.user import User
@@ -18,6 +22,17 @@ from app.modules.auth.deps import get_current_user
 from app.modules.transactions.schemas import TransactionCreate, TransactionOut, TransactionUpdate
 
 router = APIRouter(prefix="/api/v1/transactions", tags=["transactions"])
+
+
+def _matches_rule(transaction: Transaction, rule: CategoryRule) -> bool:
+    value = getattr(transaction, rule.field, "") or ""
+    value_norm = str(value).lower()
+    pattern = rule.pattern.lower()
+    if rule.operator == "equals":
+        return value_norm == pattern
+    if rule.operator == "starts_with":
+        return value_norm.startswith(pattern)
+    return pattern in value_norm
 
 
 async def _account_or_404(account_id: uuid.UUID, db: AsyncSession, current_user: User) -> Account:
@@ -99,6 +114,83 @@ async def list_transactions(
     query = query.order_by(Transaction.date.desc(), Transaction.created_at.desc()).offset(offset).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())
+
+
+@router.get("/export/excel")
+async def export_transactions_excel(
+    start_date: datetime.date | None = None,
+    end_date: datetime.date | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    query = (
+        select(Transaction)
+        .join(Account)
+        .options(selectinload(Transaction.account), selectinload(Transaction.category))
+        .where(Account.user_id == current_user.id)
+        .order_by(Transaction.date.desc(), Transaction.created_at.desc())
+    )
+    if start_date is not None:
+        query = query.where(Transaction.date >= start_date)
+    if end_date is not None:
+        query = query.where(Transaction.date <= end_date)
+    result = await db.execute(query)
+    rows = list(result.scalars().all())
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Transacciones"
+    sheet.append(["Fecha", "Descripción", "Cuenta", "Categoría", "Tipo", "Moneda", "Monto"])
+    for transaction in rows:
+        sheet.append([
+            transaction.date.isoformat(),
+            transaction.description,
+            transaction.account.name if transaction.account else "",
+            transaction.category.name if transaction.category else "",
+            transaction.movement_type,
+            transaction.currency,
+            float(transaction.amount),
+        ])
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=transacciones.xlsx"},
+    )
+
+
+@router.post("/auto-categorize")
+async def auto_categorize_transactions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, int]:
+    rules_result = await db.execute(
+        select(CategoryRule)
+        .where(CategoryRule.user_id == current_user.id)
+        .order_by(CategoryRule.priority.desc(), CategoryRule.created_at.asc())
+    )
+    rules = list(rules_result.scalars().all())
+    if not rules:
+        return {"updated": 0}
+
+    tx_result = await db.execute(
+        select(Transaction)
+        .join(Account)
+        .where(Account.user_id == current_user.id, Transaction.category_id.is_(None))
+    )
+    updated = 0
+    for transaction in tx_result.scalars().all():
+        for rule in rules:
+            if _matches_rule(transaction, rule):
+                transaction.category_id = rule.target_category_id
+                transaction.rule_id = rule.id
+                updated += 1
+                break
+    await db.commit()
+    return {"updated": updated}
 
 
 @router.post("", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)

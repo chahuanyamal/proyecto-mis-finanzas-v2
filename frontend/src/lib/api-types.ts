@@ -105,3 +105,38 @@ export interface TransactionPayload {
   currency: string;
   movement_type: Transaction["movement_type"];
 }
+
+export interface Budget {
+  id: string;
+  user_id: string;
+  category_id: string;
+  month: string;
+  amount: string;
+  alert_at_percent: number;
+  category: Category | null;
+}
+
+export interface BudgetPayload {
+  category_id: string;
+  month: string;
+  amount: string;
+  alert_at_percent: number;
+}
+
+export interface MonthlyDashboard {
+  month: string;
+  income: string;
+  expenses: string;
+  balance: string;
+  savings_rate: string;
+  category_expenses: Array<{ category_id: string; category_name: string; amount: string }>;
+  budgets: Array<{
+    id: string;
+    category_id: string;
+    category_name: string;
+    amount: string;
+    spent: string;
+    percent: number;
+    status: "ok" | "warning" | "exceeded";
+  }>;
+}

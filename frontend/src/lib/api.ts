@@ -6,8 +6,11 @@ import type {
   CategoryPayload,
   CategoryRule,
   CategoryRulePayload,
+  Budget,
+  BudgetPayload,
   Institution,
   LoginResponse,
+  MonthlyDashboard,
   Tag,
   TagPayload,
   Transaction,
@@ -98,6 +101,20 @@ export const transactionsApi = {
   create: (payload: TransactionPayload) => api.post<Transaction>("/v1/transactions", payload),
   update: (id: string, payload: Partial<TransactionPayload>) => api.patch<Transaction>(`/v1/transactions/${id}`, payload),
   remove: (id: string) => api.delete(`/v1/transactions/${id}`),
+  autoCategorize: () => api.post<{ updated: number }>("/v1/transactions/auto-categorize"),
+  exportExcelUrl: () => "/api/v1/transactions/export/excel",
+};
+
+export const budgetsApi = {
+  list: (month?: string) => api.get<Budget[]>("/v1/budgets", { params: month ? { month } : undefined }),
+  create: (payload: BudgetPayload) => api.post<Budget>("/v1/budgets", payload),
+  update: (id: string, payload: Partial<Pick<BudgetPayload, "amount" | "alert_at_percent">>) =>
+    api.patch<Budget>(`/v1/budgets/${id}`, payload),
+  remove: (id: string) => api.delete(`/v1/budgets/${id}`),
+};
+
+export const dashboardApi = {
+  monthly: (month: string) => api.get<MonthlyDashboard>("/v1/dashboard/monthly", { params: { month } }),
 };
 
 export default api;
