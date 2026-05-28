@@ -29,8 +29,10 @@ services:
       DEBUG: ${DEBUG:-false}
       SECRET_KEY: ${SECRET_KEY:-cambiar-en-produccion-secret-key-min-32-chars}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:1510}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_ACCESS_EXPIRE_MINUTES: ${JWT_ACCESS_EXPIRE_MINUTES:-15}
       JWT_REFRESH_EXPIRE_DAYS: ${JWT_REFRESH_EXPIRE_DAYS:-7}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     depends_on:
       postgres:
         condition: service_healthy

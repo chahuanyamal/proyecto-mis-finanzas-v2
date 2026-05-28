@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import async_session_factory, engine
+from app.modules.auth.router import router as auth_router
 
 
 @asynccontextmanager
@@ -32,6 +33,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    app.include_router(auth_router)
 
     @app.get("/health")
     async def health():

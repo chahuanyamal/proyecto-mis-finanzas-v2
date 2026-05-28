@@ -122,8 +122,8 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 - [x] Bootstrap automático (migraciones + seed)
 - [x] Docker Compose funcional
 - [x] Frontend Next.js 15 scaffold con Tailwind CSS + React Query
-- [ ] Endpoints API REST
-- [ ] Autenticación JWT (modelos listos, endpoints pendientes)
+- [x] Endpoints API REST de autenticación (`/api/v1/auth/*`)
+- [x] Autenticación JWT con cookies HttpOnly (login, refresh, logout, me)
 - [ ] Upload y parseo de PDF
 - [ ] Dashboard mensual
 - [ ] Categorización por reglas
@@ -133,9 +133,9 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 
 ## Limitaciones actuales
 
-- **Sin endpoints REST implementados.** Solo existe `/health`. Los modelos y la infraestructura están completos, pero no hay routers ni schemas Pydantic aún.
-- **Sin autenticación en runtime.** La lógica de JWT y bcrypt está implementada en `core/security.py`, pero no hay middleware de auth ni endpoints de login/register.
-- **Sin frontend funcional.** Solo la página inicial de placeholder.
+- **API parcial.** Existen `/health` y endpoints de autenticación. Falta migrar cuentas, transacciones, categorías, PDFs, presupuestos y dashboard real.
+- **Auth v1 simplificada.** Usa JWT en cookies HttpOnly, sin Redis ni blacklist de sesiones. Refresh token es JWT firmado, no persistido en BD.
+- **Frontend mínimo.** Login y dashboard autenticado funcionan, pero el dashboard aún es placeholder.
 - **Sin tests.** `pytest` y `pytest-asyncio` están en dependencias pero no hay archivos de test.
 - **PDF parsing no implementado.** `pdfplumber` y `pytesseract` están instalados pero sin código que los use.
 - **Exportación Excel no implementada.** `openpyxl` instalado pero sin uso.
@@ -155,11 +155,23 @@ Configurable en `.env` con `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`.
 | `POSTGRES_USER`        | `finanzas`                                                 | Usuario BD                          |
 | `POSTGRES_PASSWORD`    | `finanzas`                                                 | Password BD                         |
 | `SECRET_KEY`           | `cambiar-en-produccion...`                                 | Clave JWT (min 32 chars)            |
+| `JWT_ALGORITHM`        | `HS256`                                                    | Algoritmo JWT                       |
 | `JWT_ACCESS_EXPIRE_MINUTES` | `15`                                                  | Expiración access token             |
 | `JWT_REFRESH_EXPIRE_DAYS`   | `7`                                                    | Expiración refresh token            |
+| `COOKIE_SECURE`        | `false`                                                   | Cookies solo HTTPS (`true` en prod con TLS) |
 | `ADMIN_EMAIL`          | `admin@finanzas.local`                                     | Email admin inicial                 |
 | `ADMIN_FULL_NAME`      | `Admin`                                                    | Nombre admin inicial                |
 | `ADMIN_PASSWORD`       | `admin123`                                                 | Password admin inicial              |
+
+## Endpoints implementados
+
+| Método | Ruta | Descripción |
+| ------ | ---- | ----------- |
+| `GET` | `/health` | Healthcheck con conexión a Postgres |
+| `POST` | `/api/v1/auth/login` | Login; setea cookies `access_token` y `refresh_token` |
+| `POST` | `/api/v1/auth/refresh` | Renueva cookies desde refresh token |
+| `POST` | `/api/v1/auth/logout` | Limpia cookies de sesión |
+| `GET` | `/api/v1/auth/me` | Usuario autenticado actual |
 
 ## Estructura del proyecto
 

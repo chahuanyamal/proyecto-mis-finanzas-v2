@@ -17,8 +17,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://finanzas:finanzas@postgres:5432/finanzas"
 
     SECRET_KEY: str = "cambiar-en-produccion-secret-key-min-32-chars"
+    JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_EXPIRE_DAYS: int = 7
+    COOKIE_SECURE: bool = False
 
     ADMIN_EMAIL: str = "admin@finanzas.local"
     ADMIN_FULL_NAME: str = "Admin"
