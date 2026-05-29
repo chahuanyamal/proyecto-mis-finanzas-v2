@@ -2,6 +2,9 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import type {
   Account,
   AccountPayload,
+  AdminUser,
+  AdminUserCreatePayload,
+  AdminUserUpdatePayload,
   AnnualReport,
   AuditEvent,
   AutoCategorizeResult,
@@ -20,6 +23,8 @@ import type {
   GoalDepositPayload,
   GoalPayload,
   MonthAggregate,
+  Notification,
+  NotificationCount,
   RangeFilters,
   Institution,
   LoginResponse,
@@ -28,6 +33,7 @@ import type {
   PatrimonioAccountTrend,
   PatrimonioCompare,
   PatrimonioHistory,
+  PatrimonioProjection,
   ParserOption,
   PreviewRow,
   Recurring,
@@ -101,6 +107,11 @@ export const authApi = {
   logout: () => api.post<{ message: string }>("/v1/auth/logout"),
   refresh: () => api.post<{ ok: boolean }>("/v1/auth/refresh"),
   me: () => api.get<User>("/v1/auth/me"),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post<{ message: string }>("/v1/auth/change-password", {
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
 };
 
 export const accountsApi = {
@@ -208,11 +219,24 @@ export const patrimonioApi = {
     api.get<PatrimonioAccountTrend>("/v1/patrimonio/account-trend", { params: { months, currency } }),
   compare: (monthsAgo = 1, currency?: string) =>
     api.get<PatrimonioCompare>("/v1/patrimonio/compare", { params: { months_ago: monthsAgo, currency } }),
+  projection: (monthsAhead = 6, historyMonths = 12, currency?: string) =>
+    api.get<PatrimonioProjection>("/v1/patrimonio/projection", {
+      params: { months_ahead: monthsAhead, history_months: historyMonths, currency },
+    }),
 };
 
 export const settingsApi = {
   get: () => api.get<Settings>("/v1/settings"),
   update: (payload: SettingsPayload) => api.patch<Settings>("/v1/settings", payload),
+  backup: () =>
+    api.get("/v1/settings/backup", { responseType: "blob" }),
+  backupImport: (file: File) => {
+    const data = new FormData();
+    data.append("file", file);
+    return api.post<{ imported: Record<string, number>; message: string }>("/v1/settings/backup/import", data, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
 };
 
 export const reportsApi = {
@@ -229,6 +253,21 @@ export const auditApi = {
     const suffix = qs.toString();
     return `/api/v1/audit/export.csv${suffix ? `?${suffix}` : ""}`;
   },
+};
+
+export const notificationsApi = {
+  list: (params?: { limit?: number; unread_only?: boolean }) =>
+    api.get<Notification[]>("/v1/notifications", { params }),
+  count: () => api.get<NotificationCount>("/v1/notifications/count"),
+  markRead: (id: string) => api.post<Notification>(`/v1/notifications/${id}/read`),
+  markAllRead: () => api.post<NotificationCount>("/v1/notifications/read-all"),
+};
+
+export const adminApi = {
+  listUsers: () => api.get<AdminUser[]>("/v1/admin/users"),
+  createUser: (payload: AdminUserCreatePayload) => api.post<AdminUser>("/v1/admin/users", payload),
+  updateUser: (id: string, payload: AdminUserUpdatePayload) => api.patch<AdminUser>(`/v1/admin/users/${id}`, payload),
+  getUser: (id: string) => api.get<AdminUser>(`/v1/admin/users/${id}`),
 };
 
 export const reconciliationApi = {

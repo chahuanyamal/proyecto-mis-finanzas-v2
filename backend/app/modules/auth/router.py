@@ -11,7 +11,7 @@ from app.core.database import get_db
 from app.core.security import REFRESH_TOKEN_TYPE, decode_token, hash_password, verify_password
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
-from app.modules.auth.schemas import LoginRequest, LoginResponse, RegisterRequest, UserOut
+from app.modules.auth.schemas import ChangePasswordRequest, LoginRequest, LoginResponse, RegisterRequest, UserOut
 from app.modules.auth.service import (
     ACCESS_COOKIE,
     REFRESH_COOKIE,
@@ -112,3 +112,17 @@ async def logout(
 @router.get("/me", response_model=UserOut)
 async def me(current_user: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(current_user)
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Contrasena actual incorrecta")
+    current_user.hashed_password = hash_password(body.new_password)
+    db.add(current_user)
+    await db.commit()
+    return {"message": "Contrasena actualizada"}

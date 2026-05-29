@@ -197,3 +197,70 @@ async def compare_patrimonio(
         "totals": totals,
         "top_movers": movers[:5],
     }
+
+
+@router.get("/projection")
+async def patrimonio_projection(
+    months_ahead: int = Query(default=6, ge=1, le=24),
+    history_months: int = Query(default=12, ge=3, le=36),
+    currency: str | None = Query(default=None, max_length=3),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Proyeccion simple con regresion lineal sobre el historial de patrimonio.
+
+    Calcula el historial mensual (igual que GET /history) y extiende la
+    tendencia lineal hacia adelante con banda de incertidumbre creciente."""
+    accounts = await _accounts_for_user(db, current_user, currency)
+    transactions = await _transactions_for_accounts(db, current_user, [account.id for account in accounts])
+
+    series: list[tuple[datetime.date, Decimal]] = []
+    for month_start in _month_points(history_months):
+        total = Decimal("0")
+        for account in accounts:
+            total += _balance_at_month_start(account, transactions, month_start)
+        series.append((month_start, total))
+
+    if len(series) < 2:
+        return {
+            "available": False,
+            "reason": "Se necesitan al menos 2 meses de historial para proyectar.",
+            "history": [{"month": d.strftime("%Y-%m"), "value": str(v)} for d, v in series],
+            "projection": [],
+        }
+
+    epoch = series[0][0]
+    xs = [(d.year - epoch.year) * 12 + (d.month - epoch.month) for d, _ in series]
+    ys = [float(v) for _, v in series]
+    n = len(xs)
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    num = sum((xs[i] - mean_x) * (ys[i] - mean_y) for i in range(n))
+    den = sum((xs[i] - mean_x) ** 2 for i in range(n))
+    slope = num / den if den else 0.0
+    intercept = mean_y - slope * mean_x
+
+    residuals = [ys[i] - (slope * xs[i] + intercept) for i in range(n)]
+    std = (sum(r * r for r in residuals) / (n - 1)) ** 0.5 if n > 1 else 0.0
+
+    last_date = series[-1][0]
+    projection = []
+    for i in range(1, months_ahead + 1):
+        fut_date = _add_months(last_date.replace(day=1), i)
+        x = (fut_date.year - epoch.year) * 12 + (fut_date.month - epoch.month)
+        yhat = slope * x + intercept
+        widening = 1.0 + (i / max(months_ahead, 1)) * 0.5
+        projection.append({
+            "month": fut_date.strftime("%Y-%m"),
+            "value": str(round(yhat, 2)),
+            "lower": str(round(yhat - std * widening, 2)),
+            "upper": str(round(yhat + std * widening, 2)),
+        })
+
+    return {
+        "available": True,
+        "currency": currency,
+        "slope_per_month": slope,
+        "history": [{"month": d.strftime("%Y-%m"), "value": str(float(v))} for d, v in series],
+        "projection": projection,
+    }

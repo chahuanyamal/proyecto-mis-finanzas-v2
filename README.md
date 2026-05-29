@@ -11,11 +11,11 @@ Aplicación web local de finanzas personales para importar cartolas PDF, categor
 | Lenguaje frontend | TypeScript strict | 5.9.3 |
 | Estilos | Tailwind CSS | 3.4.19 |
 | Estado/datos frontend | Zustand, TanStack React Query, Axios | 5.0.13, 5.100.14, 1.16.1 |
-| Gráficos | Recharts | 2.15.4 |
+| Gráficos | SVG inline + Recharts | — |
 | Tests frontend | Vitest, Testing Library, Playwright | 3.2.4, 16.3.2, 1.60.0 |
 | Backend | FastAPI, Uvicorn | 0.136.3, 0.48.0 |
 | Lenguaje backend | Python | 3.12 |
-| Dependencias backend | uv | 0.8+ |
+| Dependencias backend | uv | 0.5+ |
 | ORM | SQLAlchemy async | 2.0.50 |
 | Base de datos | PostgreSQL | 16-alpine |
 | Driver DB | asyncpg | 0.31.0 |
@@ -23,6 +23,7 @@ Aplicación web local de finanzas personales para importar cartolas PDF, categor
 | Auth | PyJWT, bcrypt, cookies HttpOnly | 2.13.0, 5.0.0 |
 | PDF/OCR | pdfplumber, pytesseract, Tesseract OCR | 0.11.9, 0.3.13 |
 | Excel | openpyxl | 3.1.5 |
+| ZIP backup | zipfile (stdlib) | — |
 | Infra | Docker Compose | v2 |
 
 ## Requisitos previos
@@ -198,14 +199,12 @@ URLs con Docker:
 
 1. Los parsers PDF se validan principalmente con fixtures sintéticos; necesitan ajustes con cartolas reales de cada banco.
 2. OCR depende de Tesseract y del idioma español instalado fuera de Docker.
-3. La reconciliación compara saldo actual contra neto de movimientos importados; aún no usa saldos iniciales/finales bancarios reales.
-4. La suite e2e inicial cubre navegación/login; falta ampliar flujos autenticados con datos seed.
-5. `ADMIN_PASSWORD`, `POSTGRES_PASSWORD` y `COOKIE_SECURE=false` son valores de desarrollo; deben cambiarse antes de exponer la app.
-6. La revocación JWT usa tabla en Postgres, sin job dedicado de limpieza periódica.
-7. No hay workers separados; parsing/OCR corre dentro del backend por restricción de v1.
-8. El frontend usa rewrites de Next.js hacia backend; en despliegues con proxy externo revisar `INTERNAL_API_URL` y CORS.
-9. `npm audit` reporta 2 vulnerabilidades moderadas transitivas en `next/postcss`; no se aplicó `npm audit fix --force` porque intenta un cambio mayor incorrecto.
-10. `npm ls --depth=0` puede mostrar `@emnapi/runtime` como extraneous en el workspace local; Docker usa `npm ci` limpio y no reproduce ese estado.
+3. `ADMIN_PASSWORD`, `POSTGRES_PASSWORD` y `COOKIE_SECURE=false` son valores de desarrollo; deben cambiarse antes de exponer la app.
+4. La revocación JWT usa tabla en Postgres, sin job dedicado de limpieza periódica.
+5. No hay workers separados; parsing/OCR corre dentro del backend (decisión de arquitectura).
+6. `npm audit` reporta 2 vulnerabilidades moderadas transitivas en `next/postcss`; no se aplicó `npm audit fix --force` porque intenta downgradear Next.js a v9.
+7. Backup import ZIP: modelos con claves foráneas (GoalContribution → Goal) no se reimportan correctamente porque los IDs se regeneran con `uuid.uuid4()`. Solo se importan modelos raíz (Account, Category, Tag, Budget, Goal, CategoryRule, RecurringExpense).
+8. `npm ls --depth=0` puede mostrar `@emnapi/runtime` como extraneous en el workspace local; Docker usa `npm ci` limpio y no reproduce ese estado.
 
 ## Flujo de cartolas
 
@@ -216,3 +215,22 @@ URLs con Docker:
 5. Usar `Revisión` para movimientos sin categoría y creación de reglas reutilizables.
 
 Ver también `docs/validacion-cartolas-reales.md` para validar parsers con PDFs reales sin commitear datos sensibles.
+
+## Checklist de salud del proyecto
+
+| Área | Estado | Notas |
+|---|---|---|
+| TypeScript | ✅ | `tsc --noEmit` pasa limpio en strict mode. Sin `any`. |
+| ESLint | ✅ | `npm run lint` pasa sin errores ni warnings. |
+| Tests frontend | ✅ | 5 tests pasan (Vitest). |
+| Tests backend | ✅ | 83 tests pasan (pytest). |
+| Docker build | ✅ | `docker compose build` exitoso. uv pinned a 0.5. |
+| Docker startup | ✅ | `docker compose up -d` levanta los 3 servicios. Healthchecks en backend y frontend. |
+| Variables de entorno | ⚠️ | `.env.example` completo (22/22 vars); `.env` local puede diferir en vars opcionales. |
+| Alembic heads | ✅ | Head único: `0008_statement_balances`. |
+| Migraciones vs modelos | ✅ | Sin migraciones faltantes. |
+| Node.js/npm audit | ⚠️ | 2 moderadas transitivas (`next/postcss`), sin fix seguro disponible. |
+| Rutas/Endpoints | ✅ | 102 rutas registradas en FastAPI. Sin colisiones. |
+| Schemas vs Models | ✅ | 3 schemas de backup corregidos en esta auditoría. |
+| Imports | ✅ | Sin imports rotos ni circulares. |
+| Estructura | ✅ | Monorepo ordenado, docker-compose con 3 servicios. |

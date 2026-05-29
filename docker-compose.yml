@@ -40,6 +40,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: python -c "import http.client;c=http.client.HTTPConnection('localhost',8000);c.request('GET','/health');assert c.getresponse().status==200"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     volumes:
       - uploads_data:/app/uploads
     restart: unless-stopped
@@ -50,9 +56,15 @@ services:
     ports:
       - "1510:3000"
     environment:
-      INTERNAL_API_URL: http://backend:8000
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000}
     depends_on:
       - backend
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
 volumes:

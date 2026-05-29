@@ -21,6 +21,8 @@ from app.modules.recurring.router import router as recurring_router
 from app.modules.reconciliation.router import router as reconciliation_router
 from app.modules.reports.router import router as reports_router
 from app.modules.rules.router import router as rules_router
+from app.modules.admin.router import router as admin_router
+from app.modules.notifications.router import router as notifications_router
 from app.modules.search.router import router as search_router
 from app.modules.settings.router import router as settings_router
 from app.modules.statements.router import router as statements_router
@@ -63,6 +65,8 @@ def create_app() -> FastAPI:
     app.include_router(goals_router)
     app.include_router(recurring_router)
     app.include_router(patrimonio_router)
+    app.include_router(notifications_router)
+    app.include_router(admin_router)
     app.include_router(settings_router)
     app.include_router(search_router)
     app.include_router(reports_router)

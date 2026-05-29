@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /uvx /usr/local/bin/
 COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev
 
