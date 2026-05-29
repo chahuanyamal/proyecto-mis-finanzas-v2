@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { CommandPalette } from "./CommandPalette";
 import { BOVEDA_NAV, BOVEDA_NAV_FLAT, isActive, openCommandPalette } from "./nav";
 import { useNavCounts } from "./useNavCounts";
+import { PERIOD_OPTIONS, usePeriodStore } from "@/stores/period";
 
 const MONTH_LABEL = new Intl.DateTimeFormat("es-CL", { month: "short", year: "2-digit" })
   .format(new Date())
@@ -23,6 +24,7 @@ export function BovedaShell({ children }: { children: ReactNode }) {
   const current = BOVEDA_NAV_FLAT.find((i) => isActive(pathname, i.href));
   const currentGroup = BOVEDA_NAV.find((g) => g.items.some((i) => isActive(pathname, i.href)));
   const counts = useNavCounts(Boolean(user));
+  const { period, currency, setPeriod, toggleCurrency } = usePeriodStore();
   const fmtCount = (n: number | undefined) =>
     n === undefined ? null : n > 999 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
 
@@ -105,6 +107,21 @@ export function BovedaShell({ children }: { children: ReactNode }) {
               <span className="live" />
               Datos al día
             </span>
+            <div className="seg" aria-label="Período">
+              {PERIOD_OPTIONS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  className={period === p.value ? "on" : ""}
+                  onClick={() => setPeriod(p.value)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="pill" onClick={toggleCurrency} aria-label="Moneda">
+              {currency} ▾
+            </button>
             <button type="button" onClick={handleLogout} className="btn ghost">
               Salir
             </button>
