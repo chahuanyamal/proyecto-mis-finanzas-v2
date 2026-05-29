@@ -1,9 +1,11 @@
 "use client";
 
 import { statementsApi, transactionsApi } from "@/lib/api";
-import type { StatementUpload, Transaction } from "@/lib/api-types";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { EmptyState } from "@/components/ui/EmptyState";
+import type { StatementQuality, StatementUpload, Transaction } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
-import { ArrowLeft, Download, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Download, Loader2, RefreshCw, RotateCcw } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -21,6 +23,7 @@ export default function StatementDetailPage() {
   const id = params.id;
   const { user, hasVerified, fetchMe } = useAuthStore();
   const [meta, setMeta] = useState<StatementUpload | null>(null);
+  const [quality, setQuality] = useState<StatementQuality | null>(null);
   const [rows, setRows] = useState<Transaction[]>([]);
   const [flow, setFlow] = useState<Flow>("all");
   const [search, setSearch] = useState("");
@@ -34,12 +37,14 @@ export default function StatementDetailPage() {
   async function load() {
     setIsLoading(true);
     try {
-      const [detail, list] = await Promise.all([
+      const [detail, list, qualityRes] = await Promise.all([
         statementsApi.detail(id),
         transactionsApi.list({ statement_id: id, limit: 500 }),
+        statementsApi.quality(id),
       ]);
       setMeta(detail.data.uploaded_file);
       setRows(list.data);
+      setQuality(qualityRes.data);
     } catch { setMessage("No se pudo cargar la cartola."); }
     finally { setIsLoading(false); }
   }
@@ -49,6 +54,15 @@ export default function StatementDetailPage() {
     setBusy(true); setMessage("");
     try { const res = await statementsApi.reprocess(id); setMessage(`Reprocesadas ${res.data.imported_transactions} transacciones.`); await load(); }
     catch { setMessage("No se pudo reprocesar."); } finally { setBusy(false); }
+  }
+
+  async function rollback() {
+    setBusy(true); setMessage("");
+    try {
+      const res = await statementsApi.rollback(id);
+      setMessage(`Rollback completado: ${res.data.deleted_transactions} movimiento(s) eliminados.`);
+      router.push("/statements");
+    } catch { setMessage("No se pudo revertir la cartola."); } finally { setBusy(false); }
   }
 
   const filtered = useMemo(() => rows.filter((tx) => {
@@ -85,6 +99,20 @@ export default function StatementDetailPage() {
             <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Cargos</p><p className="mt-1 text-lg font-bold text-red-300">{fmt(String(totalExpense))}</p></div>
           </div>
 
+          <div className="mt-4 rounded border border-slate-800 bg-black/30 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-semibold">Calidad de importación</p>
+              <span className="text-xs text-slate-500">{quality?.parser ?? "parser desconocido"}</span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs sm:grid-cols-4">
+              <span className="rounded bg-slate-900 px-2 py-1">Sin categoría: {quality?.uncategorized_count ?? 0}</span>
+              <span className="rounded bg-slate-900 px-2 py-1">Duplicados: {quality?.duplicate_count ?? 0}</span>
+              <span className="rounded bg-slate-900 px-2 py-1">Internos: {quality?.internal_transfer_count ?? 0}</span>
+              <span className="rounded bg-slate-900 px-2 py-1">Rango: {quality?.period_start ?? "?"} → {quality?.period_end ?? "?"}</span>
+            </div>
+            {quality?.warnings.length ? <ul className="mt-3 space-y-1 text-sm text-amber-300">{quality.warnings.map((warning) => <li key={warning}>• {warning}</li>)}</ul> : <p className="mt-3 text-sm text-emerald-300">Sin advertencias detectadas.</p>}
+          </div>
+
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <div className="flex gap-1">
               {(["all", "income", "expense"] as Flow[]).map((fl) => (
@@ -97,6 +125,7 @@ export default function StatementDetailPage() {
             <span className="text-xs text-slate-500">{filtered.length}/{rows.length}</span>
             <button onClick={() => window.open(`${transactionsApi.exportCsvUrl()}?statement_id=${id}`, "_blank")} className="flex items-center gap-1 rounded border border-slate-700 px-3 py-1.5 text-xs hover:bg-white/5"><Download size={14} /> CSV</button>
             <button onClick={() => void reprocess()} disabled={busy} className="flex items-center gap-1 rounded border border-slate-700 px-3 py-1.5 text-xs hover:bg-white/5 disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Reprocesar</button>
+            <ConfirmButton title="Revertir cartola" description="Esto eliminará la cartola y todos sus movimientos importados." confirmLabel="Revertir" disabled={busy} onConfirm={rollback} className="flex items-center gap-1 rounded border border-red-800 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"><RotateCcw size={14} /> Rollback</ConfirmButton>
           </div>
         </section>
 
@@ -122,7 +151,7 @@ export default function StatementDetailPage() {
                     <td className={`px-3 py-2 text-right font-mono ${tx.movement_type === "income" ? "text-emerald-300" : "text-red-300"}`}>{tx.movement_type === "income" ? "+" : "−"}{fmt(tx.amount, tx.currency)}</td>
                   </tr>
                 ))}
-                {filtered.length === 0 ? <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-500">Sin movimientos.</td></tr> : null}
+                {filtered.length === 0 ? <tr><td colSpan={5} className="px-3 py-2"><EmptyState title="Sin movimientos" description="No hay movimientos para el filtro actual." /></td></tr> : null}
               </tbody>
               {filtered.length ? (
                 <tfoot><tr className="border-t border-slate-700 text-sm"><td colSpan={4} className="px-3 py-2 text-right text-slate-400">Neto filtrado</td><td className={`px-3 py-2 text-right font-mono ${filteredSum >= 0 ? "text-emerald-300" : "text-red-300"}`}>{fmt(String(filteredSum))}</td></tr></tfoot>

@@ -2,6 +2,9 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import type {
   Account,
   AccountPayload,
+  AnnualReport,
+  AuditEvent,
+  AutoCategorizeResult,
   Category,
   CategoryPayload,
   CategoryRule,
@@ -9,7 +12,12 @@ import type {
   Budget,
   BudgetPayload,
   CategoryAggregate,
+  DashboardPeriod,
+  DashboardSummary,
+  DashboardTrends,
   Goal,
+  GoalContribution,
+  GoalDepositPayload,
   GoalPayload,
   MonthAggregate,
   RangeFilters,
@@ -17,14 +25,24 @@ import type {
   LoginResponse,
   MonthlyDashboard,
   NetWorth,
+  PatrimonioAccountTrend,
+  PatrimonioCompare,
+  PatrimonioHistory,
+  ParserOption,
   PreviewRow,
   Recurring,
+  RecurringDetectResult,
   RecurringPayload,
+  ReconciliationSummary,
+  SearchResponse,
   Settings,
   SettingsPayload,
+  UpcomingRecurring,
   SplitPayload,
   StatementUpload,
   StatementDetail,
+  StatementQuality,
+  StatementQualityStats,
   StatementPreview,
   StatementUploadResponse,
   Tag,
@@ -114,6 +132,10 @@ export const rulesApi = {
   remove: (id: string) => api.delete(`/v1/category-rules/${id}`),
 };
 
+export const searchApi = {
+  global: (q: string, limit = 20) => api.get<SearchResponse>("/v1/search", { params: { q, limit } }),
+};
+
 export const transactionsApi = {
   list: (filters?: TransactionFilters) =>
     api.get<Transaction[]>("/v1/transactions", { params: filters }),
@@ -123,7 +145,7 @@ export const transactionsApi = {
   update: (id: string, payload: Partial<TransactionPayload> & { is_internal_transfer?: boolean; is_duplicate?: boolean }) =>
     api.patch<Transaction>(`/v1/transactions/${id}`, payload),
   remove: (id: string) => api.delete(`/v1/transactions/${id}`),
-  autoCategorize: () => api.post<{ updated: number }>("/v1/transactions/auto-categorize"),
+  autoCategorize: () => api.post<AutoCategorizeResult>("/v1/transactions/auto-categorize"),
   setNotes: (id: string, notes: string | null) => api.patch<Transaction>(`/v1/transactions/${id}/notes`, { notes }),
   setFlag: (id: string, is_flagged: boolean, reason?: string | null) =>
     api.patch<Transaction>(`/v1/transactions/${id}/flag`, { is_flagged, reason }),
@@ -154,17 +176,25 @@ export const budgetsApi = {
 
 export const dashboardApi = {
   monthly: (month: string) => api.get<MonthlyDashboard>("/v1/dashboard/monthly", { params: { month } }),
+  summary: (period: DashboardPeriod, currency?: string) =>
+    api.get<DashboardSummary>("/v1/dashboard/summary", { params: { period, currency } }),
+  trends: (months = 12, currency?: string) =>
+    api.get<DashboardTrends>("/v1/dashboard/trends", { params: { months, currency } }),
 };
 
 export const goalsApi = {
   list: () => api.get<Goal[]>("/v1/goals"),
   create: (payload: GoalPayload) => api.post<Goal>("/v1/goals", payload),
   update: (id: string, payload: Partial<GoalPayload>) => api.patch<Goal>(`/v1/goals/${id}`, payload),
+  deposit: (id: string, payload: GoalDepositPayload) => api.post<Goal>(`/v1/goals/${id}/deposit`, payload),
+  contributions: (id: string) => api.get<GoalContribution[]>(`/v1/goals/${id}/contributions`),
   remove: (id: string) => api.delete(`/v1/goals/${id}`),
 };
 
 export const recurringApi = {
   list: () => api.get<Recurring[]>("/v1/recurring"),
+  detect: () => api.post<RecurringDetectResult>("/v1/recurring/detect"),
+  upcoming: (days = 45) => api.get<UpcomingRecurring[]>("/v1/recurring/upcoming", { params: { days } }),
   create: (payload: RecurringPayload) => api.post<Recurring>("/v1/recurring", payload),
   update: (id: string, payload: Partial<RecurringPayload>) => api.patch<Recurring>(`/v1/recurring/${id}`, payload),
   remove: (id: string) => api.delete(`/v1/recurring/${id}`),
@@ -172,6 +202,12 @@ export const recurringApi = {
 
 export const patrimonioApi = {
   get: () => api.get<NetWorth>("/v1/patrimonio"),
+  history: (months = 12, currency?: string) =>
+    api.get<PatrimonioHistory>("/v1/patrimonio/history", { params: { months, currency } }),
+  accountTrend: (months = 12, currency?: string) =>
+    api.get<PatrimonioAccountTrend>("/v1/patrimonio/account-trend", { params: { months, currency } }),
+  compare: (monthsAgo = 1, currency?: string) =>
+    api.get<PatrimonioCompare>("/v1/patrimonio/compare", { params: { months_ago: monthsAgo, currency } }),
 };
 
 export const settingsApi = {
@@ -179,14 +215,37 @@ export const settingsApi = {
   update: (payload: SettingsPayload) => api.patch<Settings>("/v1/settings", payload),
 };
 
+export const reportsApi = {
+  annual: (year: number) => api.get<AnnualReport>(`/v1/reports/annual/${year}`),
+  annualCsvUrl: (year: number) => `/api/v1/reports/annual/${year}/csv`,
+};
+
+export const auditApi = {
+  list: (params?: { entity_type?: string; limit?: number }) => api.get<AuditEvent[]>("/v1/audit", { params }),
+  exportCsvUrl: (params?: { entity_type?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.entity_type) qs.set("entity_type", params.entity_type);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString();
+    return `/api/v1/audit/export.csv${suffix ? `?${suffix}` : ""}`;
+  },
+};
+
+export const reconciliationApi = {
+  summary: (params?: { currency?: string; tolerance?: string; start_date?: string; end_date?: string }) =>
+    api.get<ReconciliationSummary>("/v1/reconciliation/summary", { params }),
+};
+
 export const statementsApi = {
   list: () => api.get<StatementUpload[]>("/v1/statements"),
   previews: () => api.get<StatementPreview[]>("/v1/statements/previews"),
-  preview: (accountId: string, file: File) => {
+  parsers: () => api.get<ParserOption[]>("/v1/statements/parsers"),
+  qualityStats: () => api.get<StatementQualityStats>("/v1/statements/quality-stats"),
+  preview: (accountId: string, file: File, parserKey?: string) => {
     const data = new FormData();
     data.append("file", file);
     return api.post<StatementPreview>("/v1/statements/preview", data, {
-      params: { account_id: accountId },
+      params: { account_id: accountId, parser_key: parserKey || undefined },
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
@@ -197,15 +256,19 @@ export const statementsApi = {
     api.delete<StatementPreview>(`/v1/statements/previews/${previewId}/rows/${idx}`),
   checkDuplicates: (previewId: string) =>
     api.get<{ duplicates: string[] }>(`/v1/statements/previews/${previewId}/duplicates`),
+  exportPreviewCsvUrl: (previewId: string) => `/api/v1/statements/previews/${previewId}/export.csv`,
   confirm: (previewId: string) => api.post<StatementUploadResponse>(`/v1/statements/previews/${previewId}/confirm`),
   cancel: (previewId: string) => api.post<{ ok: boolean }>(`/v1/statements/previews/${previewId}/cancel`),
   detail: (uploadedFileId: string) => api.get<StatementDetail>(`/v1/statements/history/${uploadedFileId}`),
+  quality: (uploadedFileId: string) => api.get<StatementQuality>(`/v1/statements/history/${uploadedFileId}/quality`),
   reprocess: (uploadedFileId: string) => api.post<StatementUploadResponse>(`/v1/statements/history/${uploadedFileId}/reprocess`),
-  upload: (accountId: string, file: File) => {
+  rollback: (uploadedFileId: string) =>
+    api.post<{ ok: boolean; deleted_transactions: number }>(`/v1/statements/history/${uploadedFileId}/rollback`),
+  upload: (accountId: string, file: File, parserKey?: string) => {
     const data = new FormData();
     data.append("file", file);
     return api.post<StatementUploadResponse>("/v1/statements/upload", data, {
-      params: { account_id: accountId },
+      params: { account_id: accountId, parser_key: parserKey || undefined },
       headers: { "Content-Type": "multipart/form-data" },
     });
   },

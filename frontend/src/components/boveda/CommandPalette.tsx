@@ -2,24 +2,60 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { searchApi } from "@/lib/api";
+import type { SearchHit } from "@/lib/api-types";
 import { BOVEDA_NAV_FLAT, OPEN_COMMAND_PALETTE } from "./nav";
 
-// Command palette ligero (⌘K / Ctrl+K). Navegación client-side por las
-// secciones de la app — sin llamadas al backend. Filtra por etiqueta y ruta.
+type PaletteItem = {
+  key: string;
+  label: string;
+  href: string;
+  group: string;
+  subtitle?: string | null;
+};
+
+const ENTITY_LABELS: Record<SearchHit["entity"], string> = {
+  transaction: "Movimiento",
+  account: "Cuenta",
+  category: "Categoria",
+  tag: "Etiqueta",
+  rule: "Regla",
+  statement: "Cartola",
+};
+
+function hitToItem(hit: SearchHit): PaletteItem {
+  return {
+    key: `${hit.entity}:${hit.id}`,
+    label: hit.title,
+    href: hit.href,
+    group: ENTITY_LABELS[hit.entity],
+    subtitle: hit.subtitle,
+  };
+}
+
+// Command palette (⌘K / Ctrl+K). Mezcla navegación local con búsqueda real
+// del backend cuando hay texto suficiente para consultar datos del usuario.
 export function CommandPalette() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const results = useMemo(() => {
+  const navResults = useMemo<PaletteItem[]>(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return BOVEDA_NAV_FLAT;
-    return BOVEDA_NAV_FLAT.filter(
+    const source = q ? BOVEDA_NAV_FLAT.filter(
       (item) => item.label.toLowerCase().includes(q) || item.href.toLowerCase().includes(q),
-    );
+    ) : BOVEDA_NAV_FLAT;
+    return source.map((item) => ({ key: `nav:${item.href}`, label: item.label, href: item.href, group: "Ir a" }));
   }, [query]);
+
+  const results = useMemo<PaletteItem[]>(() => {
+    const dataResults = searchHits.map(hitToItem);
+    return query.trim().length >= 2 ? [...navResults, ...dataResults] : navResults;
+  }, [navResults, query, searchHits]);
 
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
@@ -52,6 +88,33 @@ export function CommandPalette() {
   useEffect(() => {
     setCursor(0);
   }, [query]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!open || q.length < 2) {
+      setSearchHits([]);
+      setIsSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setIsSearching(true);
+    const timeout = window.setTimeout(() => {
+      searchApi.global(q, 12)
+        .then((response) => {
+          if (!cancelled) setSearchHits(response.data.hits);
+        })
+        .catch(() => {
+          if (!cancelled) setSearchHits([]);
+        })
+        .finally(() => {
+          if (!cancelled) setIsSearching(false);
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [open, query]);
 
   if (!open) return null;
 
@@ -94,18 +157,19 @@ export function CommandPalette() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onListKeydown}
-            placeholder="Ir a…"
+            placeholder="Ir a o buscar movimientos, cuentas, reglas…"
             className="input border-0 bg-transparent px-0 focus:shadow-none"
             aria-label="Buscar sección"
           />
           <span className="border border-navy-600 px-1 text-[10px] text-slate-500">ESC</span>
         </div>
+        {isSearching ? <div className="border-b border-navy-600 px-3 py-1 text-[11px] text-slate-500">Buscando datos...</div> : null}
         <ul className="max-h-80 overflow-y-auto py-1">
           {results.length === 0 ? (
             <li className="px-3 py-2 text-[12px] text-slate-500">Sin resultados</li>
           ) : (
             results.map((item, i) => (
-              <li key={item.href}>
+              <li key={item.key}>
                 <button
                   type="button"
                   onClick={() => go(item.href)}
@@ -114,8 +178,11 @@ export function CommandPalette() {
                     i === cursor ? "bg-brand-500/10 text-brand-400" : "text-slate-300 hover:bg-navy-850"
                   }`}
                 >
-                  <span>{item.label}</span>
-                  <span className="text-[10px] uppercase tracking-wider text-slate-600">{item.href}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate">{item.label}</span>
+                    {item.subtitle ? <span className="block truncate text-[10px] text-slate-500">{item.subtitle}</span> : null}
+                  </span>
+                  <span className="ml-3 shrink-0 text-[10px] uppercase tracking-wider text-slate-600">{item.group}</span>
                 </button>
               </li>
             ))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import uuid
 from decimal import Decimal
 
@@ -8,10 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.goal import Goal
+from app.models.goal import Goal, GoalContribution
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
-from app.modules.goals.schemas import GoalCreate, GoalOut, GoalUpdate
+from app.modules.audit.service import log_audit
+from app.modules.goals.schemas import GoalContributionOut, GoalCreate, GoalDeposit, GoalOut, GoalUpdate
 
 router = APIRouter(prefix="/api/v1/goals", tags=["goals"])
 
@@ -70,6 +72,44 @@ async def update_goal(
     await db.commit()
     await db.refresh(goal)
     return _to_out(goal)
+
+
+@router.post("/{goal_id}/deposit", response_model=GoalOut)
+async def deposit_goal(
+    goal_id: uuid.UUID,
+    body: GoalDeposit,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> GoalOut:
+    goal = await _goal_or_404(goal_id, db, current_user)
+    contribution = GoalContribution(
+        goal_id=goal.id,
+        user_id=current_user.id,
+        amount=body.amount,
+        date=body.date or datetime.date.today(),
+        note=body.note,
+    )
+    goal.current_amount = Decimal(goal.current_amount or 0) + body.amount
+    db.add(contribution)
+    await log_audit(db, user_id=current_user.id, action="deposit", entity_type="goal", entity_id=str(goal.id), metadata={"amount": str(body.amount), "note": body.note})
+    await db.commit()
+    await db.refresh(goal)
+    return _to_out(goal)
+
+
+@router.get("/{goal_id}/contributions", response_model=list[GoalContributionOut])
+async def list_goal_contributions(
+    goal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[GoalContribution]:
+    await _goal_or_404(goal_id, db, current_user)
+    result = await db.execute(
+        select(GoalContribution)
+        .where(GoalContribution.goal_id == goal_id, GoalContribution.user_id == current_user.id)
+        .order_by(GoalContribution.date.desc(), GoalContribution.created_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)

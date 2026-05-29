@@ -2,7 +2,7 @@
 
 import { statementsApi } from "@/lib/api";
 import type { PreviewRow, StatementPreview } from "@/lib/api-types";
-import { Check, Loader2, Pencil, Save, Trash2, X } from "lucide-react";
+import { Check, Download, Loader2, Pencil, Save, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 interface Props {
@@ -106,6 +106,14 @@ export default function StatementPreviewCard({ preview, onChanged }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            className="flex items-center gap-1 rounded bg-slate-700 px-3 py-1 text-sm text-slate-200"
+            onClick={() => window.open(statementsApi.exportPreviewCsvUrl(preview.id), "_blank")}
+            disabled={isBusy}
+          >
+            <Download size={14} />
+            CSV
+          </button>
           <button
             className="flex items-center gap-1 rounded bg-slate-700 px-3 py-1 text-sm text-slate-200"
             onClick={checkDuplicates}

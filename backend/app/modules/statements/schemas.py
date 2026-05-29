@@ -29,6 +29,12 @@ class StatementUploadResponse(BaseModel):
     imported_transactions: int
 
 
+class ParserOption(BaseModel):
+    key: str
+    display_name: str
+    subformats: list[dict[str, str]] = Field(default_factory=list)
+
+
 class PreviewRow(BaseModel):
     date: str
     description: str = Field(max_length=500)
@@ -69,3 +75,18 @@ class StatementConfirmResponse(BaseModel):
     uploaded_file: UploadedFileOut
     imported_transactions: int
     possible_duplicates: list[str] = Field(default_factory=list)
+
+
+class StatementQualityOut(BaseModel):
+    uploaded_file_id: str
+    parser: str | None
+    status: str
+    transaction_count: int
+    income_count: int
+    expense_count: int
+    duplicate_count: int
+    uncategorized_count: int
+    internal_transfer_count: int
+    period_start: str | None
+    period_end: str | None
+    warnings: list[str] = Field(default_factory=list)

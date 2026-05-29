@@ -1,6 +1,7 @@
 "use client";
 
 import { accountsApi, categoriesApi, tagsApi, transactionsApi } from "@/lib/api";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Account, Category, SplitPayload, Tag, Transaction, TransactionFilters, TransactionPayload, TransactionSummary } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { Download, Flag, Loader2, Save, Sparkles, Trash2 } from "lucide-react";
@@ -123,7 +124,6 @@ export default function TransactionsPage() {
     } catch { setError("No se pudo guardar la transacción."); }
   }
   async function remove(id: string) {
-    if (!confirm("¿Eliminar esta transacción?")) return;
     try { await transactionsApi.remove(id); if (editing?.id === id) reset(); await loadTransactions(); } catch { setError("No se pudo eliminar la transacción."); }
   }
   async function autoCategorize() {
@@ -149,7 +149,7 @@ export default function TransactionsPage() {
     catch { setError("No se pudo categorizar en lote."); }
   }
   async function bulkRemove() {
-    if (!selected.size || !confirm(`¿Eliminar ${selected.size} movimiento(s)?`)) return;
+    if (!selected.size) return;
     try { await transactionsApi.bulkDelete([...selected]); setSelected(new Set()); await loadTransactions(); }
     catch { setError("No se pudo eliminar en lote."); }
   }
@@ -237,7 +237,7 @@ export default function TransactionsPage() {
                 <option value="">Sin categoría</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <button onClick={() => void bulkApplyCategory()} className="rounded bg-brand-500 px-3 py-1 font-semibold text-black">Categorizar</button>
-              <button onClick={() => void bulkRemove()} className="rounded border border-red-700 px-3 py-1 text-red-300">Eliminar</button>
+              <ConfirmButton title="Eliminar movimientos" description={`Se eliminarán ${selected.size} movimiento(s) seleccionados.`} confirmLabel="Eliminar" onConfirm={bulkRemove} className="rounded border border-red-700 px-3 py-1 text-red-300">Eliminar</ConfirmButton>
               <button onClick={() => setSelected(new Set())} className="text-slate-400">Limpiar</button>
             </div>
           ) : null}
@@ -276,7 +276,7 @@ export default function TransactionsPage() {
                               {tx.movement_type === "income" ? "+" : "−"}{fmt(tx.amount, tx.currency)}
                             </span>
                             <button onClick={() => edit(tx)} className="text-xs text-brand-300">Editar</button>
-                            <button onClick={() => void remove(tx.id)} className="text-red-300"><Trash2 size={14} /></button>
+                            <ConfirmButton title="Eliminar transacción" description="Esta transacción será eliminada definitivamente." confirmLabel="Eliminar" onConfirm={() => remove(tx.id)} className="text-red-300"><Trash2 size={14} /></ConfirmButton>
                           </div>
                         ))}
                       </div>

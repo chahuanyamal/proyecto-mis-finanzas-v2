@@ -39,7 +39,6 @@ export default function RulesPage() {
     catch { setError("No se pudo guardar la regla."); }
   }
   async function remove(id: string) {
-    if (!confirm("¿Eliminar esta regla?")) return;
     try { await rulesApi.remove(id); await loadData(); } catch { setError("No se pudo eliminar la regla."); }
   }
 

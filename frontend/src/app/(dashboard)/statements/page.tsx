@@ -1,7 +1,7 @@
 "use client";
 
 import { accountsApi, statementsApi } from "@/lib/api";
-import type { Account, StatementUpload } from "@/lib/api-types";
+import type { Account, ParserOption, StatementQualityStats, StatementUpload } from "@/lib/api-types";
 import type { StatementPreview } from "@/lib/api-types";
 import StatementPreviewCard from "@/components/statements/StatementPreviewCard";
 import { useAuthStore } from "@/stores/auth";
@@ -22,7 +22,10 @@ export default function StatementsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [statements, setStatements] = useState<StatementUpload[]>([]);
   const [previews, setPreviews] = useState<StatementPreview[]>([]);
+  const [parsers, setParsers] = useState<ParserOption[]>([]);
+  const [qualityStats, setQualityStats] = useState<StatementQualityStats | null>(null);
   const [accountId, setAccountId] = useState("");
+  const [parserKey, setParserKey] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -31,14 +34,18 @@ export default function StatementsPage() {
   useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/statements"); }, [hasVerified, router, user]);
 
   async function loadData() {
-    const [acc, st, pr] = await Promise.all([
+    const [acc, st, pr, parserOptions, quality] = await Promise.all([
       accountsApi.list(),
       statementsApi.list(),
       statementsApi.previews(),
+      statementsApi.parsers(),
+      statementsApi.qualityStats(),
     ]);
     setAccounts(acc.data);
     setStatements(st.data);
     setPreviews(pr.data);
+    setParsers(parserOptions.data);
+    setQualityStats(quality.data);
     if (!accountId && acc.data[0]) setAccountId(acc.data[0].id);
   }
   useEffect(() => { if (user) void loadData(); }, [user]);
@@ -49,10 +56,11 @@ export default function StatementsPage() {
     setIsBusy(true);
     setMessage("");
     try {
-      const response = await statementsApi.preview(accountId, file);
+      const response = await statementsApi.preview(accountId, file, parserKey || undefined);
       const rows = response.data.rows.length;
       const bank = response.data.bank_detected ?? "desconocido";
-      setMessage(`Preview creado: ${rows} transacciones detectadas (banco: ${bank}).`);
+      const mode = parserKey ? `parser forzado: ${parserKey}` : "parser automatico";
+      setMessage(`Preview creado: ${rows} transacciones detectadas (banco: ${bank}, ${mode}).`);
       setFile(null);
       await loadData();
     } catch {
@@ -89,7 +97,7 @@ export default function StatementsPage() {
           <p className="mt-2 text-sm text-slate-400">
             Sube, revisa, edita y confirma. Puedes modificar o excluir filas antes de importar.
           </p>
-          <form onSubmit={submit} className="mt-6 grid gap-3 md:grid-cols-[1fr_1fr_160px]">
+          <form onSubmit={submit} className="mt-6 grid gap-3 md:grid-cols-[1fr_1fr] lg:grid-cols-[1fr_1fr_1fr_160px]">
             <select
               className="rounded border border-slate-700 bg-black px-3 py-2"
               value={accountId}
@@ -99,6 +107,17 @@ export default function StatementsPage() {
               <option value="">Cuenta</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+            <select
+              className="rounded border border-slate-700 bg-black px-3 py-2"
+              value={parserKey}
+              onChange={(e) => setParserKey(e.target.value)}
+              title="Deja automatico salvo que una cartola falle o se detecte mal."
+            >
+              <option value="">Parser automatico</option>
+              {parsers.map((parser) => (
+                <option key={parser.key} value={parser.key}>{parser.display_name}</option>
               ))}
             </select>
             <input
@@ -116,9 +135,36 @@ export default function StatementsPage() {
               Preview
             </button>
           </form>
+          <p className="mt-3 text-xs text-slate-500">
+            Recomendado: usar automatico. Fuerza un parser solo si el banco se detecta mal o el preview no cuadra.
+          </p>
           {message && (
             <p className="mt-4 rounded bg-black/40 px-3 py-2 text-sm text-slate-300">{message}</p>
           )}
+        </section>
+
+        <section className="rounded-lg border border-slate-800 bg-surface-900 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Calidad de importación</p>
+              <h2 className="mt-1 text-lg font-semibold">Cobertura por parser</h2>
+            </div>
+            <span className="text-sm text-slate-400">{qualityStats?.transaction_count ?? 0} movimientos importados</span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Cartolas</p><p className="mt-1 text-2xl font-bold text-brand-300">{qualityStats?.statement_count ?? 0}</p></div>
+            <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Movimientos</p><p className="mt-1 text-2xl font-bold text-emerald-300">{qualityStats?.transaction_count ?? 0}</p></div>
+            <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Parsers usados</p><p className="mt-1 text-2xl font-bold text-slate-100">{qualityStats?.by_parser.length ?? 0}</p></div>
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            {(qualityStats?.by_parser ?? []).map((item) => (
+              <div key={item.parser} className="flex items-center justify-between rounded border border-slate-800 bg-black/20 px-3 py-2 text-sm">
+                <span>{item.parser}</span>
+                <span className="text-slate-400">{item.statements} cartola(s) · {item.transactions} mov.</span>
+              </div>
+            ))}
+            {qualityStats?.by_parser.length === 0 ? <p className="text-sm text-slate-500">Aún no hay datos de calidad.</p> : null}
+          </div>
         </section>
 
         <section className="space-y-4">

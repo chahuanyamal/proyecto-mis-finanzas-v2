@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.models.category_rule import CategoryRule
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
+from app.modules.audit.service import log_audit
 from app.modules.categories.service import ensure_category_visible
 from app.modules.rules.schemas import CategoryRuleCreate, CategoryRuleOut, CategoryRuleUpdate
 
@@ -47,6 +48,7 @@ async def create_rule(body: CategoryRuleCreate, db: AsyncSession = Depends(get_d
     db.add(rule)
     await db.flush()
     rule_id = rule.id
+    await log_audit(db, user_id=current_user.id, action="create", entity_type="rule", entity_id=str(rule_id), metadata={"pattern": rule.pattern, "target_category_id": str(rule.target_category_id)})
     await db.commit()
     return await _rule_or_404(rule_id, db, current_user)
 
@@ -67,5 +69,6 @@ async def update_rule(rule_id: uuid.UUID, body: CategoryRuleUpdate, db: AsyncSes
 async def delete_rule(rule_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> Response:
     rule = await _rule_or_404(rule_id, db, current_user)
     await db.delete(rule)
+    await log_audit(db, user_id=current_user.id, action="delete", entity_type="rule", entity_id=str(rule_id))
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

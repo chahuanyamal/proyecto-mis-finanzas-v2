@@ -83,6 +83,25 @@ export interface CategoryRulePayload {
   priority: number;
 }
 
+export interface AutoCategorizeResult {
+  updated: number;
+}
+
+export type SearchEntity = "transaction" | "account" | "category" | "tag" | "rule" | "statement";
+
+export interface SearchHit {
+  entity: SearchEntity;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  href: string;
+}
+
+export interface SearchResponse {
+  q: string;
+  hits: SearchHit[];
+}
+
 export interface TransactionSplit {
   id: string;
   transaction_id: string;
@@ -195,6 +214,47 @@ export interface MonthlyDashboard {
   }>;
 }
 
+export type DashboardPeriod = "mtd" | "30d" | "ytd" | "12m";
+
+export interface DashboardSummary {
+  period: DashboardPeriod;
+  date_from: string;
+  date_to: string;
+  currency: string | null;
+  income: string;
+  expenses: string;
+  net: string;
+  savings_rate: string;
+  income_change: string | null;
+  expenses_change: string | null;
+  net_change: string | null;
+  uncategorized_count: number;
+  category_expenses: Array<{
+    category_id: string;
+    category_name: string;
+    category_color: string | null;
+    amount: string;
+    count: number;
+  }>;
+  recent_transactions: Array<{
+    id: string;
+    date: string;
+    description: string;
+    amount: string;
+    currency: string;
+    movement_type: "income" | "expense";
+    account_name: string;
+    category_name: string | null;
+    category_color: string | null;
+  }>;
+}
+
+export interface DashboardTrends {
+  months: number;
+  currency: string | null;
+  trends: Array<{ month: string; income: string; expenses: string; net: string }>;
+}
+
 export interface StatementUpload {
   id: string;
   account_id: string;
@@ -210,6 +270,12 @@ export interface StatementUploadResponse {
   uploaded_file: StatementUpload;
   imported_transactions: number;
   possible_duplicates: string[];
+}
+
+export interface ParserOption {
+  key: string;
+  display_name: string;
+  subformats: Array<{ key: string; label: string; hint?: string }>;
 }
 
 export interface StatementDetail {
@@ -279,6 +345,21 @@ export interface GoalPayload {
   target_date?: string | null;
 }
 
+export interface GoalDepositPayload {
+  amount: string;
+  date?: string | null;
+  note?: string | null;
+}
+
+export interface GoalContribution {
+  id: string;
+  goal_id: string;
+  user_id: string;
+  date: string;
+  amount: string;
+  note: string | null;
+}
+
 export type RecurringFrequency = "weekly" | "monthly" | "yearly";
 
 export interface Recurring {
@@ -305,10 +386,65 @@ export interface RecurringPayload {
   active?: boolean;
 }
 
+export interface RecurringDetectResult {
+  detected: number;
+  created: number;
+  items: Array<{
+    name: string;
+    amount: string;
+    currency: string;
+    movement_type: "income" | "expense";
+    frequency: RecurringFrequency;
+    next_date: string | null;
+    occurrences: number;
+  }>;
+}
+
+export interface UpcomingRecurring {
+  id: string;
+  name: string;
+  amount: string;
+  currency: string;
+  movement_type: "income" | "expense";
+  frequency: RecurringFrequency;
+  due_date: string;
+  days_until: number;
+}
+
 export interface NetWorth {
   accounts: Array<{ id: string; name: string; account_type: string; currency: string; balance: string }>;
   totals_by_currency: Array<{ currency: string; total: string }>;
   account_count: number;
+}
+
+export interface PatrimonioHistory {
+  months: number;
+  currency: string | null;
+  history: Array<{ month: string; currency: string; value: string }>;
+}
+
+export interface PatrimonioAccountTrend {
+  months: number;
+  currency: string | null;
+  accounts: Array<{
+    id: string;
+    name: string;
+    account_type: string;
+    currency: string;
+    current_balance: string;
+    delta: string;
+    delta_percent: string | null;
+    points: Array<{ month: string; balance: string }>;
+  }>;
+}
+
+export interface PatrimonioCompare {
+  months_ago: number;
+  from_month: string;
+  to_month: string;
+  currency: string | null;
+  totals: Array<{ currency: string; from: string; to: string; delta: string; delta_percent: string | null }>;
+  top_movers: Array<{ id: string; name: string; currency: string; from: string; to: string; delta: string }>;
 }
 
 export interface Settings {
@@ -320,4 +456,81 @@ export interface Settings {
 export interface SettingsPayload {
   full_name?: string;
   preferences?: Record<string, unknown>;
+}
+
+export interface AnnualReport {
+  year: number;
+  totals: Array<{ currency: string; income: string; expenses: string; net: string; count: number }>;
+  by_month: Array<{ month: string; currency: string; income: string; expenses: string; net: string; count: number }>;
+  by_category: Array<{
+    category_id: string | null;
+    category_name: string;
+    currency: string;
+    income: string;
+    expenses: string;
+    net: string;
+    count: number;
+  }>;
+  transaction_count: number;
+  uncategorized_count: number;
+}
+
+export interface AuditEvent {
+  id: string;
+  user_id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface StatementQualityStats {
+  statement_count: number;
+  transaction_count: number;
+  by_parser: Array<{ parser: string; statements: number; transactions: number }>;
+  recent: Array<{
+    id: string;
+    filename: string;
+    parser: string | null;
+    status: string;
+    transactions: number;
+    period_start: string | null;
+    period_end: string | null;
+  }>;
+}
+
+export interface StatementQuality {
+  uploaded_file_id: string;
+  parser: string | null;
+  status: string;
+  transaction_count: number;
+  income_count: number;
+  expense_count: number;
+  duplicate_count: number;
+  uncategorized_count: number;
+  internal_transfer_count: number;
+  period_start: string | null;
+  period_end: string | null;
+  warnings: string[];
+}
+
+export interface ReconciliationAccount {
+  account_id: string;
+  account_name: string;
+  currency: string;
+  account_balance: string;
+  movement_balance: string;
+  difference: string;
+  status: "ok" | "warning";
+  transaction_count: number;
+}
+
+export interface ReconciliationSummary {
+  currency: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  accounts: ReconciliationAccount[];
+  ok_count: number;
+  warning_count: number;
 }

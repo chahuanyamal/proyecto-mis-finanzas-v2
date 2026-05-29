@@ -1,6 +1,7 @@
 "use client";
 
 import { categoriesApi } from "@/lib/api";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Category, CategoryPayload } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2, Save, Trash2 } from "lucide-react";
@@ -67,7 +68,6 @@ export default function CategoriesPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("¿Eliminar esta categoría?")) return;
     try {
       await categoriesApi.remove(id);
       await loadData();
@@ -102,7 +102,7 @@ export default function CategoriesPage() {
                     ) : (
                       <div className="flex gap-3">
                         <button type="button" onClick={() => edit(category)} className="text-brand-300">Editar</button>
-                        <button type="button" onClick={() => void remove(category.id)} className="text-red-300"><Trash2 size={16} /></button>
+                        <ConfirmButton title="Eliminar categoría" description="No se podrá eliminar si está en uso por transacciones o reglas." confirmLabel="Eliminar" onConfirm={() => remove(category.id)} className="text-red-300"><Trash2 size={16} /></ConfirmButton>
                       </div>
                     )}
                   </div>

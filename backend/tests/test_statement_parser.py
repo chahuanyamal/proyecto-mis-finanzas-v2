@@ -78,6 +78,13 @@ def test_parse_statement_pdf_includes_bank_and_extraction_method(monkeypatch: py
     assert result["rows"][0]["amount"] == "15990"
 
 
+def test_forced_unknown_parser_raises_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(parser, "_extract_text", lambda _p: ("Banco BICE\n03-05-2026 Restaurante 15.990 - 100.000", "text"))
+
+    with pytest.raises(parser.StatementParseError, match="Parser no soportado"):
+        parser.parse_statement_pdf(Path("cartola.pdf"), parser_key="no-existe")
+
+
 def test_rows_from_result_maps_credit_debit_to_income_expense() -> None:
     # Los parsers bancarios dedicados usan credit/debit y montos positivos;
     # la v2 espera income/expense. Este mapeo es el puente entre ambos.

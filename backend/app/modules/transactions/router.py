@@ -25,6 +25,7 @@ from app.models.transaction_tag import TransactionTag
 from app.models.uploaded_file import UploadedFile
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
+from app.modules.audit.service import log_audit
 from app.modules.accounts.schemas import AccountOut
 from app.modules.categories.schemas import CategoryOut
 from app.modules.categories.service import ensure_category_visible
@@ -512,7 +513,11 @@ async def auto_categorize_transactions(
     tx_result = await db.execute(
         select(Transaction)
         .join(Account)
-        .where(Account.user_id == current_user.id, Transaction.category_id.is_(None))
+        .where(
+            Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
+            Transaction.category_id.is_(None),
+        )
     )
     updated = 0
     for transaction in tx_result.scalars().all():
@@ -550,6 +555,7 @@ async def bulk_set_category(
     for tx in transactions:
         tx.category_id = body.category_id
         tx.rule_id = None
+    await log_audit(db, user_id=current_user.id, action="bulk_category", entity_type="transaction", metadata={"count": len(transactions), "category_id": str(body.category_id) if body.category_id else None})
     await db.commit()
     return {"updated": len(transactions)}
 
@@ -581,6 +587,7 @@ async def bulk_delete(
     transactions = await _owned_transactions(body.transaction_ids, db, current_user)
     for tx in transactions:
         await db.delete(tx)
+    await log_audit(db, user_id=current_user.id, action="bulk_delete", entity_type="transaction", metadata={"count": len(transactions)})
     await db.commit()
     return {"deleted": len(transactions)}
 
@@ -598,6 +605,7 @@ async def create_transaction(
     db.add(transaction)
     await db.flush()
     transaction_id = transaction.id
+    await log_audit(db, user_id=current_user.id, action="create", entity_type="transaction", entity_id=str(transaction_id), metadata={"amount": str(transaction.amount), "currency": transaction.currency})
     await db.commit()
     return _to_out(await _transaction_or_404(transaction_id, db, current_user))
 
@@ -622,6 +630,7 @@ async def update_transaction(
         await ensure_category_visible(changes["category_id"], db, current_user.id)
     for field, value in changes.items():
         setattr(transaction, field, value)
+    await log_audit(db, user_id=current_user.id, action="update", entity_type="transaction", entity_id=str(transaction.id), metadata={"fields": sorted(changes.keys())})
     await db.commit()
     return _to_out(await _transaction_or_404(transaction_id, db, current_user))
 
@@ -737,5 +746,6 @@ async def clear_splits(
 async def delete_transaction(transaction_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> Response:
     transaction = await _transaction_or_404(transaction_id, db, current_user)
     await db.delete(transaction)
+    await log_audit(db, user_id=current_user.id, action="delete", entity_type="transaction", entity_id=str(transaction_id))
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

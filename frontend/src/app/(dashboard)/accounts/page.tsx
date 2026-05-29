@@ -1,6 +1,7 @@
 "use client";
 
 import { accountsApi } from "@/lib/api";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Account, AccountPayload, Institution } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
@@ -108,7 +109,6 @@ export default function AccountsPage() {
   }
 
   async function deleteAccount(id: string) {
-    if (!confirm("¿Eliminar esta cuenta?")) return;
     setError("");
     try {
       await accountsApi.remove(id);
@@ -176,14 +176,15 @@ export default function AccountsPage() {
                         >
                           Editar
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => void deleteAccount(account.id)}
+                        <ConfirmButton
+                          title="Eliminar cuenta"
+                          description="Esta acción eliminará la cuenta si no tiene dependencias activas."
+                          confirmLabel="Eliminar"
+                          onConfirm={() => deleteAccount(account.id)}
                           className="text-red-300 hover:text-red-200"
-                          aria-label={`Eliminar ${account.name}`}
                         >
                           <Trash2 size={16} />
-                        </button>
+                        </ConfirmButton>
                       </td>
                     </tr>
                   ))}

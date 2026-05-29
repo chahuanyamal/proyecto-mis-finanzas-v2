@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -32,6 +33,57 @@ def _money(value: Decimal | None) -> str:
     return str(value or Decimal("0"))
 
 
+def _percent(numerator: Decimal, denominator: Decimal) -> str:
+    return str(round((numerator / denominator) * 100, 2)) if denominator else "0"
+
+
+def _period_range(period: Literal["mtd", "30d", "ytd", "12m"], today: datetime.date | None = None) -> tuple[datetime.date, datetime.date]:
+    current = today or datetime.date.today()
+    if period == "30d":
+        return current - datetime.timedelta(days=29), current + datetime.timedelta(days=1)
+    if period == "ytd":
+        return datetime.date(current.year, 1, 1), current + datetime.timedelta(days=1)
+    if period == "12m":
+        return _add_months(datetime.date(current.year, current.month, 1), -11), current + datetime.timedelta(days=1)
+    return datetime.date(current.year, current.month, 1), current + datetime.timedelta(days=1)
+
+
+def _previous_range(start: datetime.date, end: datetime.date) -> tuple[datetime.date, datetime.date]:
+    days = (end - start).days
+    previous_end = start
+    return previous_end - datetime.timedelta(days=days), previous_end
+
+
+def _add_months(value: datetime.date, months: int) -> datetime.date:
+    month = value.month - 1 + months
+    year = value.year + month // 12
+    month = month % 12 + 1
+    return datetime.date(year, month, 1)
+
+
+async def _totals_for_range(db: AsyncSession, current_user: User, start: datetime.date, end: datetime.date, currency: str | None) -> dict[str, Decimal]:
+    query = (
+        select(Transaction.movement_type, func.coalesce(func.sum(Transaction.amount), 0))
+        .join(Account)
+        .where(
+            Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
+            Transaction.date >= start,
+            Transaction.date < end,
+            Transaction.is_internal_transfer.is_(False),
+            Transaction.is_duplicate.is_(False),
+        )
+        .group_by(Transaction.movement_type)
+    )
+    if currency:
+        query = query.where(Transaction.currency == currency)
+    rows = await db.execute(query)
+    by_type = {row[0]: Decimal(row[1]) for row in rows.all()}
+    income = by_type.get("income", Decimal("0"))
+    expenses = by_type.get("expense", Decimal("0"))
+    return {"income": income, "expenses": expenses, "net": income - expenses}
+
+
 @router.get("/monthly")
 async def monthly_dashboard(
     month: str = Query(pattern=r"^\d{4}-\d{2}$"),
@@ -42,7 +94,12 @@ async def monthly_dashboard(
     totals = await db.execute(
         select(Transaction.movement_type, func.coalesce(func.sum(Transaction.amount), 0))
         .join(Account)
-        .where(Account.user_id == current_user.id, Transaction.date >= start, Transaction.date < end)
+        .where(
+            Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
+            Transaction.date >= start,
+            Transaction.date < end,
+        )
         .group_by(Transaction.movement_type)
     )
     by_type = {row[0]: Decimal(row[1]) for row in totals.all()}
@@ -55,6 +112,7 @@ async def monthly_dashboard(
         .join(Account, Account.id == Transaction.account_id)
         .where(
             Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
             Transaction.date >= start,
             Transaction.date < end,
             Transaction.movement_type == "expense",
@@ -72,6 +130,7 @@ async def monthly_dashboard(
         .join(Account)
         .where(
             Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
             Transaction.date >= start,
             Transaction.date < end,
             Transaction.movement_type == "expense",
@@ -109,3 +168,146 @@ async def monthly_dashboard(
         "category_expenses": category_expenses,
         "budgets": budgets,
     }
+
+
+@router.get("/summary")
+async def dashboard_summary(
+    period: Literal["mtd", "30d", "ytd", "12m"] = "mtd",
+    currency: str | None = Query(default=None, max_length=3),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    start, end = _period_range(period)
+    previous_start, previous_end = _previous_range(start, end)
+    totals = await _totals_for_range(db, current_user, start, end, currency)
+    previous_totals = await _totals_for_range(db, current_user, previous_start, previous_end, currency)
+
+    category_query = (
+        select(
+            Category.id,
+            Category.name,
+            Category.color,
+            func.coalesce(func.sum(Transaction.amount), 0),
+            func.count(Transaction.id),
+        )
+        .join(Transaction, Transaction.category_id == Category.id)
+        .join(Account, Account.id == Transaction.account_id)
+        .where(
+            Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
+            Transaction.date >= start,
+            Transaction.date < end,
+            Transaction.movement_type == "expense",
+            Transaction.is_internal_transfer.is_(False),
+            Transaction.is_duplicate.is_(False),
+        )
+        .group_by(Category.id, Category.name, Category.color)
+        .order_by(func.sum(Transaction.amount).desc())
+        .limit(8)
+    )
+    if currency:
+        category_query = category_query.where(Transaction.currency == currency)
+    category_rows = await db.execute(category_query)
+
+    recent_query = (
+        select(Transaction, Account.name, Category.name, Category.color)
+        .join(Account, Account.id == Transaction.account_id)
+        .outerjoin(Category, Category.id == Transaction.category_id)
+        .where(
+            Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
+            Transaction.date >= start,
+            Transaction.date < end,
+            Transaction.is_internal_transfer.is_(False),
+            Transaction.is_duplicate.is_(False),
+        )
+        .order_by(Transaction.date.desc(), Transaction.created_at.desc())
+        .limit(8)
+    )
+    if currency:
+        recent_query = recent_query.where(Transaction.currency == currency)
+    recent_rows = await db.execute(recent_query)
+
+    uncategorized_query = (
+        select(func.count(Transaction.id))
+        .join(Account)
+        .where(
+            Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
+            Transaction.date >= start,
+            Transaction.date < end,
+            Transaction.category_id.is_(None),
+            Transaction.is_internal_transfer.is_(False),
+            Transaction.is_duplicate.is_(False),
+        )
+    )
+    if currency:
+        uncategorized_query = uncategorized_query.where(Transaction.currency == currency)
+    uncategorized_count = (await db.execute(uncategorized_query)).scalar_one()
+
+    def change(current: Decimal, previous: Decimal) -> str | None:
+        if previous == 0:
+            return None
+        return _percent(current - previous, previous.copy_abs())
+
+    return {
+        "period": period,
+        "date_from": start.isoformat(),
+        "date_to": (end - datetime.timedelta(days=1)).isoformat(),
+        "currency": currency,
+        "income": _money(totals["income"]),
+        "expenses": _money(totals["expenses"]),
+        "net": _money(totals["net"]),
+        "savings_rate": _percent(totals["net"], totals["income"]),
+        "income_change": change(totals["income"], previous_totals["income"]),
+        "expenses_change": change(totals["expenses"], previous_totals["expenses"]),
+        "net_change": change(totals["net"], previous_totals["net"]),
+        "uncategorized_count": int(uncategorized_count or 0),
+        "category_expenses": [
+            {
+                "category_id": str(category_id),
+                "category_name": name,
+                "category_color": color,
+                "amount": _money(amount),
+                "count": int(count),
+            }
+            for category_id, name, color, amount, count in category_rows.all()
+        ],
+        "recent_transactions": [
+            {
+                "id": str(tx.id),
+                "date": tx.date.isoformat(),
+                "description": tx.description,
+                "amount": _money(tx.amount),
+                "currency": tx.currency,
+                "movement_type": tx.movement_type,
+                "account_name": account_name,
+                "category_name": category_name,
+                "category_color": category_color,
+            }
+            for tx, account_name, category_name, category_color in recent_rows.all()
+        ],
+    }
+
+
+@router.get("/trends")
+async def dashboard_trends(
+    months: int = Query(default=12, ge=1, le=24),
+    currency: str | None = Query(default=None, max_length=3),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    current_month = datetime.date.today().replace(day=1)
+    first_month = _add_months(current_month, -(months - 1))
+    trends = []
+    for index in range(months):
+        start = _add_months(first_month, index)
+        end = _add_months(start, 1)
+        totals = await _totals_for_range(db, current_user, start, end, currency)
+        trends.append({
+            "month": start.strftime("%Y-%m"),
+            "income": _money(totals["income"]),
+            "expenses": _money(totals["expenses"]),
+            "net": _money(totals["net"]),
+        })
+    return {"months": months, "currency": currency, "trends": trends}

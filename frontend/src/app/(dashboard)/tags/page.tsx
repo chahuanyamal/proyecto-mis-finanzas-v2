@@ -31,7 +31,6 @@ export default function TagsPage() {
     } catch { setError("No se pudo guardar el tag."); }
   }
   async function remove(id: string) {
-    if (!confirm("¿Eliminar este tag?")) return;
     try { await tagsApi.remove(id); await loadData(); } catch { setError("No se pudo eliminar el tag."); }
   }
 

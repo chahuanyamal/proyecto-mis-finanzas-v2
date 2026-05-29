@@ -23,6 +23,31 @@ class GoalUpdate(BaseModel):
     target_date: datetime.date | None = None
 
 
+class GoalDeposit(BaseModel):
+    amount: Decimal = Field(gt=0)
+    date: datetime.date | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
+class GoalContributionOut(BaseModel):
+    id: uuid.UUID
+    goal_id: uuid.UUID
+    user_id: uuid.UUID
+    date: datetime.date
+    amount: Decimal
+    note: str | None
+
+    model_config = {"from_attributes": True}
+
+    @field_serializer("id", "goal_id", "user_id")
+    def serialize_contribution_uuid(self, value: uuid.UUID) -> str:
+        return str(value)
+
+    @field_serializer("amount")
+    def serialize_contribution_amount(self, value: Decimal) -> str:
+        return str(value)
+
+
 class GoalOut(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID

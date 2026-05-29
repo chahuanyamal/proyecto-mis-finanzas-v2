@@ -54,6 +54,9 @@ class ParserRegistry:
     def get(self, key: str) -> BaseParser | None:
         return next((parser for parser in self._parsers if parser.key == key), None)
 
+    def list_options(self) -> list[BaseParser]:
+        return list(self._parsers)
+
     def detect(self, content: bytes, filename: str) -> tuple[BaseParser, float]:
         """Detecta el parser más apropiado y retorna (parser, confidence)."""
         scored = self.score_candidates(content, filename)

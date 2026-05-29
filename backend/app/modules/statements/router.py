@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import datetime
+import csv
+import io
 import uuid
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import delete, select
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -17,12 +20,16 @@ from app.models.transaction import Transaction
 from app.models.uploaded_file import UploadedFile
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
+from app.modules.audit.service import log_audit
+from app.modules.parsers.registry import ParserRegistry
 from app.modules.statements.parser import StatementParseError, parse_statement_pdf
 from app.modules.statements.schemas import (
+    ParserOption,
     PreviewRowUpdate,
     PreviewSummary,
     StatementConfirmResponse,
     StatementPreviewOut,
+    StatementQualityOut,
     StatementUploadResponse,
     UploadedFileOut,
 )
@@ -110,6 +117,45 @@ def _preview_to_out(preview: StatementPreview) -> StatementPreviewOut:
     return out
 
 
+async def _quality_for_uploaded_file(uploaded_file: UploadedFile, db: AsyncSession, current_user: User) -> StatementQualityOut:
+    result = await db.execute(
+        select(Transaction).where(Transaction.uploaded_file_id == uploaded_file.id, Transaction.user_id == current_user.id)
+    )
+    transactions = list(result.scalars().all())
+    income_count = sum(1 for tx in transactions if tx.movement_type == "income")
+    expense_count = sum(1 for tx in transactions if tx.movement_type == "expense")
+    duplicate_count = sum(1 for tx in transactions if tx.is_duplicate)
+    uncategorized_count = sum(1 for tx in transactions if tx.category_id is None)
+    internal_transfer_count = sum(1 for tx in transactions if tx.is_internal_transfer)
+    warnings: list[str] = []
+    if not transactions:
+        warnings.append("La cartola no tiene movimientos importados.")
+    if uploaded_file.period_start is None or uploaded_file.period_end is None:
+        warnings.append("La cartola no tiene rango de fechas detectado.")
+    if duplicate_count:
+        warnings.append(f"Hay {duplicate_count} movimiento(s) marcados como duplicados.")
+    if uncategorized_count:
+        warnings.append(f"Hay {uncategorized_count} movimiento(s) sin categoría.")
+    if uploaded_file.period_start and uploaded_file.period_end:
+        outside = sum(1 for tx in transactions if tx.date < uploaded_file.period_start or tx.date > uploaded_file.period_end)
+        if outside:
+            warnings.append(f"Hay {outside} movimiento(s) fuera del período de la cartola.")
+    return StatementQualityOut(
+        uploaded_file_id=str(uploaded_file.id),
+        parser=uploaded_file.bank_detected,
+        status=uploaded_file.status,
+        transaction_count=len(transactions),
+        income_count=income_count,
+        expense_count=expense_count,
+        duplicate_count=duplicate_count,
+        uncategorized_count=uncategorized_count,
+        internal_transfer_count=internal_transfer_count,
+        period_start=uploaded_file.period_start.isoformat() if uploaded_file.period_start else None,
+        period_end=uploaded_file.period_end.isoformat() if uploaded_file.period_end else None,
+        warnings=warnings,
+    )
+
+
 async def _create_uploaded_file_from_rows(preview: StatementPreview, account: Account, db: AsyncSession) -> tuple[UploadedFile, int]:
     uploaded_file = UploadedFile(
         account_id=preview.account_id,
@@ -151,15 +197,63 @@ async def list_previews(db: AsyncSession = Depends(get_db), current_user: User =
     return [_preview_to_out(p) for p in result.scalars().all()]
 
 
+@router.get("/parsers", response_model=list[ParserOption])
+async def list_parsers(_current_user: User = Depends(get_current_user)) -> list[ParserOption]:
+    return [
+        ParserOption(key=parser.key, display_name=parser.display_name, subformats=parser.subformats())
+        for parser in ParserRegistry().list_options()
+    ]
+
+
+@router.get("/quality-stats")
+async def quality_stats(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> dict:
+    statements = list((await db.execute(select(UploadedFile).where(UploadedFile.user_id == current_user.id))).scalars().all())
+    tx_counts = await db.execute(
+        select(Transaction.uploaded_file_id, func.count(Transaction.id))
+        .where(Transaction.user_id == current_user.id)
+        .group_by(Transaction.uploaded_file_id)
+    )
+    counts = {uploaded_file_id: int(count) for uploaded_file_id, count in tx_counts.all()}
+    by_parser: dict[str, dict[str, int]] = {}
+    for statement in statements:
+        parser = (statement.bank_detected or "unknown").split(":", 1)[0]
+        item = by_parser.setdefault(parser, {"statements": 0, "transactions": 0})
+        item["statements"] += 1
+        item["transactions"] += counts.get(statement.id, 0)
+    return {
+        "statement_count": len(statements),
+        "transaction_count": sum(counts.values()),
+        "by_parser": [{"parser": parser, **values} for parser, values in sorted(by_parser.items())],
+        "recent": [
+            {
+                "id": str(statement.id),
+                "filename": statement.filename,
+                "parser": statement.bank_detected,
+                "status": statement.status,
+                "transactions": counts.get(statement.id, 0),
+                "period_start": statement.period_start.isoformat() if statement.period_start else None,
+                "period_end": statement.period_end.isoformat() if statement.period_end else None,
+            }
+            for statement in sorted(statements, key=lambda item: item.created_at, reverse=True)[:20]
+        ],
+    }
+
+
 @router.post("/preview", response_model=StatementPreviewOut, status_code=status.HTTP_201_CREATED)
-async def create_preview(account_id: uuid.UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementPreviewOut:
+async def create_preview(
+    account_id: uuid.UUID,
+    parser_key: str | None = Query(default=None, max_length=50),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StatementPreviewOut:
     await _account_or_404(account_id, db, current_user)
     if file.content_type != "application/pdf":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Solo se aceptan PDFs")
     path = _store_upload(current_user, file)
     path.write_bytes(await file.read())
     try:
-        parsed = parse_statement_pdf(path)
+        parsed = parse_statement_pdf(path, parser_key=parser_key)
     except StatementParseError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except Exception as exc:
@@ -175,6 +269,28 @@ async def create_preview(account_id: uuid.UUID, file: UploadFile = File(...), db
 async def get_preview(preview_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementPreviewOut:
     preview = await _preview_or_404(preview_id, db, current_user)
     return _preview_to_out(preview)
+
+
+@router.get("/previews/{preview_id}/export.csv")
+async def export_preview_csv(preview_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StreamingResponse:
+    preview = await _preview_or_404(preview_id, db, current_user)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["date", "description", "amount", "movement_type"])
+    for row in preview.rows or []:
+        writer.writerow([
+            row.get("date", ""),
+            row.get("description", ""),
+            row.get("amount", ""),
+            row.get("movement_type", ""),
+        ])
+    output.seek(0)
+    filename = Path(preview.filename).stem or "preview"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}-preview.csv"},
+    )
 
 
 @router.patch("/previews/{preview_id}/rows")
@@ -212,6 +328,7 @@ async def confirm_preview(preview_id: uuid.UUID, db: AsyncSession = Depends(get_
     account = await _account_or_404(preview.account_id, db, current_user)
     duplicates = await _detect_duplicates(preview, db, current_user)
     uploaded_file, count = await _create_uploaded_file_from_rows(preview, account, db)
+    await log_audit(db, user_id=current_user.id, action="confirm", entity_type="statement", entity_id=str(uploaded_file.id), metadata={"imported_transactions": count, "filename": uploaded_file.filename})
     await db.delete(preview)
     await db.commit()
     await db.refresh(uploaded_file)
@@ -232,6 +349,12 @@ async def statement_detail(uploaded_file_id: uuid.UUID, db: AsyncSession = Depen
     result = await db.execute(select(Transaction).where(Transaction.uploaded_file_id == uploaded_file.id).order_by(Transaction.date))
     transactions = result.scalars().all()
     return {"uploaded_file": UploadedFileOut.model_validate(uploaded_file), "transactions": [{"id": str(tx.id), "date": tx.date.isoformat(), "description": tx.description, "amount": str(tx.amount), "movement_type": tx.movement_type} for tx in transactions]}
+
+
+@router.get("/history/{uploaded_file_id}/quality", response_model=StatementQualityOut)
+async def statement_quality(uploaded_file_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementQualityOut:
+    uploaded_file = await _uploaded_file_or_404(uploaded_file_id, db, current_user)
+    return await _quality_for_uploaded_file(uploaded_file, db, current_user)
 
 
 @router.post("/history/{uploaded_file_id}/reprocess", response_model=StatementConfirmResponse)
@@ -256,8 +379,26 @@ async def reprocess_statement(uploaded_file_id: uuid.UUID, db: AsyncSession = De
     return StatementConfirmResponse(uploaded_file=UploadedFileOut.model_validate(uploaded_file), imported_transactions=len(rows))
 
 
+@router.post("/history/{uploaded_file_id}/rollback")
+async def rollback_statement(uploaded_file_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> dict[str, int | bool]:
+    uploaded_file = await _uploaded_file_or_404(uploaded_file_id, db, current_user)
+    count_result = await db.execute(select(Transaction.id).where(Transaction.uploaded_file_id == uploaded_file.id, Transaction.user_id == current_user.id))
+    transaction_ids = list(count_result.scalars().all())
+    await db.execute(delete(Transaction).where(Transaction.id.in_(transaction_ids)))
+    await db.delete(uploaded_file)
+    await log_audit(db, user_id=current_user.id, action="rollback", entity_type="statement", entity_id=str(uploaded_file_id), metadata={"deleted_transactions": len(transaction_ids), "filename": uploaded_file.filename})
+    await db.commit()
+    return {"ok": True, "deleted_transactions": len(transaction_ids)}
+
+
 @router.post("/upload", response_model=StatementUploadResponse, status_code=status.HTTP_201_CREATED)
-async def upload_statement(account_id: uuid.UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> StatementUploadResponse:
-    preview = await create_preview(account_id, file, db, current_user)
+async def upload_statement(
+    account_id: uuid.UUID,
+    parser_key: str | None = Query(default=None, max_length=50),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StatementUploadResponse:
+    preview = await create_preview(account_id, parser_key, file, db, current_user)
     response = await confirm_preview(preview.id, db, current_user)
     return StatementUploadResponse(uploaded_file=response.uploaded_file, imported_transactions=response.imported_transactions)

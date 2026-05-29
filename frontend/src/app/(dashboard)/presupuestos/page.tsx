@@ -41,7 +41,6 @@ export default function BudgetsPage() {
     } catch { setError("No se pudo guardar el presupuesto. Puede existir uno para esa categoría y mes."); }
   }
   async function remove(id: string) {
-    if (!confirm("¿Eliminar este presupuesto?")) return;
     try { await budgetsApi.remove(id); await loadData(); } catch { setError("No se pudo eliminar el presupuesto."); }
   }
 

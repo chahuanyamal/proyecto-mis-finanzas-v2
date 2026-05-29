@@ -1,19 +1,24 @@
 "use client";
 
 import { goalsApi } from "@/lib/api";
-import type { Goal, GoalPayload } from "@/lib/api-types";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { EmptyState } from "@/components/ui/EmptyState";
+import type { Goal, GoalContribution, GoalDepositPayload, GoalPayload } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
-import { Save, Trash2 } from "lucide-react";
+import { Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 const emptyForm: GoalPayload = { name: "", target_amount: "1000000", current_amount: "0", currency: "CLP", target_date: "" };
+const emptyDeposit: GoalDepositPayload = { amount: "10000", date: new Date().toISOString().slice(0, 10), note: "" };
 
 export default function GoalsPage() {
   const router = useRouter();
   const { user, hasVerified, fetchMe } = useAuthStore();
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [contributions, setContributions] = useState<Record<string, GoalContribution[]>>({});
   const [form, setForm] = useState<GoalPayload>(emptyForm);
+  const [depositForms, setDepositForms] = useState<Record<string, GoalDepositPayload>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -21,7 +26,17 @@ export default function GoalsPage() {
   useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/goals"); }, [hasVerified, router, user]);
 
   async function load() {
-    try { setGoals((await goalsApi.list()).data); } catch { setError("No se pudieron cargar las metas."); }
+    try {
+      const goalList = (await goalsApi.list()).data;
+      setGoals(goalList);
+      const pairs = await Promise.all(goalList.map(async (goal) => [goal.id, (await goalsApi.contributions(goal.id)).data] as const));
+      setContributions(Object.fromEntries(pairs));
+      setDepositForms((current) => {
+        const next = { ...current };
+        for (const goal of goalList) if (!next[goal.id]) next[goal.id] = emptyDeposit;
+        return next;
+      });
+    } catch { setError("No se pudieron cargar las metas."); }
   }
   useEffect(() => { if (user) void load(); }, [user]);
 
@@ -40,8 +55,18 @@ export default function GoalsPage() {
     } catch { setError("No se pudo guardar la meta."); }
   }
   async function remove(id: string) {
-    if (!confirm("¿Eliminar esta meta?")) return;
     try { await goalsApi.remove(id); await load(); } catch { setError("No se pudo eliminar la meta."); }
+  }
+  function setDeposit(goalId: string, changes: Partial<GoalDepositPayload>) {
+    setDepositForms((current) => ({ ...current, [goalId]: { ...emptyDeposit, ...current[goalId], ...changes } }));
+  }
+  async function deposit(goalId: string) {
+    const payload = depositForms[goalId] ?? emptyDeposit;
+    try {
+      await goalsApi.deposit(goalId, { ...payload, date: payload.date || null, note: payload.note || null });
+      setDepositForms((current) => ({ ...current, [goalId]: emptyDeposit }));
+      await load();
+    } catch { setError("No se pudo registrar el aporte."); }
   }
 
   return (
@@ -52,13 +77,16 @@ export default function GoalsPage() {
           <h1 className="mt-2 text-3xl font-bold">Metas de ahorro</h1>
           {error ? <p className="mt-4 rounded bg-red-950/50 px-3 py-2 text-sm text-red-200">{error}</p> : null}
           <div className="mt-6 space-y-3">
-            {goals.map((goal) => (
+            {goals.map((goal) => {
+              const recent = contributions[goal.id] ?? [];
+              const depositForm = depositForms[goal.id] ?? emptyDeposit;
+              return (
               <div key={goal.id} className="rounded border border-slate-800 bg-black/30 p-4">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold">{goal.name}</p>
                   <div className="flex items-center gap-4">
                     <button onClick={() => edit(goal)} className="text-brand-300">Editar</button>
-                    <button onClick={() => void remove(goal.id)} className="text-red-300"><Trash2 size={16} /></button>
+                    <ConfirmButton title="Eliminar meta" description="Esta acción eliminará la meta y su historial de aportes." confirmLabel="Eliminar" onConfirm={() => remove(goal.id)} className="text-red-300"><Trash2 size={16} /></ConfirmButton>
                   </div>
                 </div>
                 <p className="mt-1 text-sm text-slate-400">
@@ -69,9 +97,28 @@ export default function GoalsPage() {
                   <div className="h-full bg-brand-500" style={{ width: `${Math.min(goal.percent, 100)}%` }} />
                 </div>
                 <p className="mt-1 text-right text-xs text-slate-500">{goal.percent}%</p>
+                <div className="mt-4 grid gap-2 md:grid-cols-[120px_150px_1fr_auto]">
+                  <input type="number" step="0.01" className="rounded border border-slate-700 bg-black px-2 py-1 text-sm" value={depositForm.amount} onChange={(e) => setDeposit(goal.id, { amount: e.target.value })} placeholder="Aporte" />
+                  <input type="date" className="rounded border border-slate-700 bg-black px-2 py-1 text-sm" value={depositForm.date ?? ""} onChange={(e) => setDeposit(goal.id, { date: e.target.value })} />
+                  <input className="rounded border border-slate-700 bg-black px-2 py-1 text-sm" value={depositForm.note ?? ""} onChange={(e) => setDeposit(goal.id, { note: e.target.value })} placeholder="Nota" />
+                  <button onClick={() => void deposit(goal.id)} className="flex items-center justify-center gap-1 rounded bg-brand-500 px-3 py-1 text-sm font-semibold text-black"><Plus size={14} /> Aportar</button>
+                </div>
+                {recent.length > 0 ? (
+                  <div className="mt-3 border-t border-slate-800 pt-3">
+                    <p className="text-xs uppercase tracking-wider text-slate-500">Últimos aportes</p>
+                    <div className="mt-2 space-y-1">
+                      {recent.slice(0, 3).map((item) => (
+                        <div key={item.id} className="flex justify-between gap-3 text-xs text-slate-400">
+                          <span>{item.date}{item.note ? ` · ${item.note}` : ""}</span>
+                          <span className="font-mono text-emerald-300">+{item.amount} {goal.currency}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ))}
-            {goals.length === 0 ? <p className="text-sm text-slate-500">Aún no tienes metas. Crea la primera →</p> : null}
+            );})}
+            {goals.length === 0 ? <EmptyState title="Sin metas" description="Crea tu primera meta de ahorro para seguir aportes y avance." /> : null}
           </div>
         </section>
         <aside className="rounded-lg border border-slate-800 bg-surface-900 p-6">

@@ -41,35 +41,52 @@ _ADVANCED_MIN_TEXT_LEN = 400
 _ADVANCED_MIN_CONFIDENCE = 0.4
 
 
-def parse_statement_pdf(path: Path) -> ParseResult:
+def parse_statement_pdf(path: Path, parser_key: str | None = None) -> ParseResult:
     text, method = _extract_text(path)
-    advanced = _parse_with_registry(path, text, method)
+    advanced = _parse_with_registry(path, text, method, parser_key=parser_key)
     if advanced is not None:
         return advanced
+    if parser_key:
+        raise StatementParseError(f"El parser seleccionado no pudo extraer movimientos: {parser_key}")
     bank = _detect_bank(text)
     rows = _parse_rows(text, bank)
     return {"bank_detected": f"{bank}:{method}", "extraction_method": method, "rows": rows}
 
 
-def _parse_with_registry(path: Path, text: str, method: Literal["text", "ocr"]) -> ParseResult | None:
+def _parse_with_registry(path: Path, text: str, method: Literal["text", "ocr"], parser_key: str | None = None) -> ParseResult | None:
     """Intenta parsear con los parsers bancarios dedicados (Itaú, BICE, Prex,
     UglyCash, TD Bank, Schwab, Alpaca, genérico). Devuelve None si no aplica o
     no extrae filas, para que el caller use la ruta simple como fallback."""
-    if len(text) < _ADVANCED_MIN_TEXT_LEN:
-        return None
-    try:
-        content = path.read_bytes()
-    except OSError:
+    if len(text) < _ADVANCED_MIN_TEXT_LEN and not parser_key:
         return None
     # Import diferido: evita coste de carga del registry en la ruta simple.
     from app.modules.parsers.registry import ParserRegistry
 
     try:
-        parser_impl, confidence = ParserRegistry().detect(content, path.name)
-        if confidence < _ADVANCED_MIN_CONFIDENCE:
+        registry = ParserRegistry()
+        if parser_key:
+            parser_impl = registry.get(parser_key)
+            if parser_impl is None:
+                raise StatementParseError(f"Parser no soportado: {parser_key}")
+        else:
+            try:
+                content = path.read_bytes()
+            except OSError:
+                return None
+            parser_impl, confidence = registry.detect(content, path.name)
+        if parser_key:
+            try:
+                content = path.read_bytes()
+            except OSError as exc:
+                raise StatementParseError(f"No se pudo leer el PDF para el parser seleccionado: {exc}") from exc
+        if not parser_key and confidence < _ADVANCED_MIN_CONFIDENCE:
             return None
         result = parser_impl.parse(content, text, None)
+    except StatementParseError:
+        raise
     except Exception:
+        if parser_key:
+            raise StatementParseError(f"El parser seleccionado fallo: {parser_key}")
         return None
     rows = _rows_from_result(result)
     if not rows:

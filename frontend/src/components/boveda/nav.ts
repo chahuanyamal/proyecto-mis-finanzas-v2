@@ -42,6 +42,7 @@ export const BOVEDA_NAV: BovedaNavGroup[] = [
     section: "Análisis",
     items: [
       { href: "/insights", label: "Insights" },
+      { href: "/reports", label: "Reportes" },
       { href: "/ai", label: "Asistente IA" },
     ],
   },
@@ -49,6 +50,8 @@ export const BOVEDA_NAV: BovedaNavGroup[] = [
     section: "Sistema",
     items: [
       { href: "/settings", label: "Ajustes" },
+      { href: "/audit", label: "Auditoría" },
+      { href: "/reconciliation", label: "Reconciliación" },
       { href: "/admin", label: "Admin" },
       { href: "/status", label: "Estado" },
     ],

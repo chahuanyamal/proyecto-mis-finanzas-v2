@@ -10,6 +10,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.core.database import async_session_factory, engine
 from app.modules.accounts.router import router as accounts_router
+from app.modules.audit.router import router as audit_router
 from app.modules.auth.router import router as auth_router
 from app.modules.budgets.router import router as budgets_router
 from app.modules.categories.router import router as categories_router
@@ -17,7 +18,10 @@ from app.modules.dashboard.router import router as dashboard_router
 from app.modules.goals.router import router as goals_router
 from app.modules.patrimonio.router import router as patrimonio_router
 from app.modules.recurring.router import router as recurring_router
+from app.modules.reconciliation.router import router as reconciliation_router
+from app.modules.reports.router import router as reports_router
 from app.modules.rules.router import router as rules_router
+from app.modules.search.router import router as search_router
 from app.modules.settings.router import router as settings_router
 from app.modules.statements.router import router as statements_router
 from app.modules.tags.router import router as tags_router
@@ -47,6 +51,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(auth_router)
+    app.include_router(audit_router)
     app.include_router(accounts_router)
     app.include_router(budgets_router)
     app.include_router(categories_router)
@@ -59,6 +64,9 @@ def create_app() -> FastAPI:
     app.include_router(recurring_router)
     app.include_router(patrimonio_router)
     app.include_router(settings_router)
+    app.include_router(search_router)
+    app.include_router(reports_router)
+    app.include_router(reconciliation_router)
 
     @app.get("/health")
     async def health():

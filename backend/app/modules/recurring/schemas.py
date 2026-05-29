@@ -54,3 +54,42 @@ class RecurringOut(BaseModel):
     @field_serializer("amount")
     def serialize_amount(self, value: Decimal) -> str:
         return str(value)
+
+
+class RecurringDetectItem(BaseModel):
+    name: str
+    amount: Decimal
+    currency: str
+    movement_type: MovementType
+    frequency: Frequency
+    next_date: datetime.date | None
+    occurrences: int
+
+    @field_serializer("amount")
+    def serialize_detect_amount(self, value: Decimal) -> str:
+        return str(value)
+
+
+class RecurringDetectResult(BaseModel):
+    detected: int
+    created: int
+    items: list[RecurringDetectItem]
+
+
+class UpcomingRecurring(BaseModel):
+    id: uuid.UUID
+    name: str
+    amount: Decimal
+    currency: str
+    movement_type: str
+    frequency: str
+    due_date: datetime.date
+    days_until: int
+
+    @field_serializer("id")
+    def serialize_upcoming_id(self, value: uuid.UUID) -> str:
+        return str(value)
+
+    @field_serializer("amount")
+    def serialize_upcoming_amount(self, value: Decimal) -> str:
+        return str(value)
