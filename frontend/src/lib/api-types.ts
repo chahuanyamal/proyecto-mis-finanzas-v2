@@ -263,6 +263,8 @@ export interface StatementUpload {
   bank_detected: string | null;
   period_start: string | null;
   period_end: string | null;
+  opening_balance: string | null;
+  closing_balance: string | null;
   status: string;
 }
 
@@ -495,6 +497,8 @@ export interface StatementQualityStats {
     parser: string | null;
     status: string;
     transactions: number;
+    opening_balance: string | null;
+    closing_balance: string | null;
     period_start: string | null;
     period_end: string | null;
   }>;
@@ -512,6 +516,8 @@ export interface StatementQuality {
   internal_transfer_count: number;
   period_start: string | null;
   period_end: string | null;
+  opening_balance: string | null;
+  closing_balance: string | null;
   warnings: string[];
 }
 
@@ -524,6 +530,8 @@ export interface ReconciliationAccount {
   difference: string;
   status: "ok" | "warning";
   transaction_count: number;
+  reconciliation_basis: "account" | "statement";
+  statement_count: number;
 }
 
 export interface ReconciliationSummary {

@@ -5,6 +5,10 @@ __pycache__/
 node_modules/
 .next/
 *.tsbuildinfo
+test-results/
+playwright-report/
+frontend/test-results/
+frontend/playwright-report/
 *.egg-info/
 dist/
 build/

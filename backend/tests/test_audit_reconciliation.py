@@ -1,6 +1,15 @@
 from __future__ import annotations
 
+import datetime
+import uuid
+from decimal import Decimal
+
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.transaction import Transaction
+from app.models.uploaded_file import UploadedFile
+from app.models.user import User
 
 
 class TestAuditAndReconciliation:
@@ -71,6 +80,40 @@ class TestAuditAndReconciliation:
         assert filtered_data["start_date"] == "2026-05-02"
         assert filtered_data["end_date"] == "2026-05-02"
         assert filtered_data["accounts"][0]["movement_balance"] == "-200.00"
+
+    async def test_reconciliation_uses_statement_balances(self, auth_client: AsyncClient, db_session: AsyncSession, test_user: User) -> None:
+        account_id = await self._create_account(auth_client, balance="9999")
+        statement = UploadedFile(
+            account_id=uuid.UUID(account_id),
+            user_id=uuid.UUID(str(test_user.id)),
+            filename="cartola-saldos.pdf",
+            bank_detected="test",
+            period_start=datetime.date(2026, 5, 1),
+            period_end=datetime.date(2026, 5, 31),
+            opening_balance=Decimal("1000"),
+            closing_balance=Decimal("1300"),
+            status="processed",
+        )
+        db_session.add(statement)
+        await db_session.flush()
+        db_session.add(Transaction(
+            uploaded_file_id=statement.id,
+            account_id=uuid.UUID(account_id),
+            user_id=uuid.UUID(str(test_user.id)),
+            date=datetime.date(2026, 5, 10),
+            description="Ingreso cartola",
+            amount=Decimal("300"),
+            currency="CLP",
+            movement_type="income",
+        ))
+        await db_session.commit()
+
+        resp = await auth_client.get("/api/v1/reconciliation/summary", params={"currency": "CLP"})
+        assert resp.status_code == 200
+        account = next(item for item in resp.json()["accounts"] if item["account_id"] == account_id)
+        assert account["reconciliation_basis"] == "statement"
+        assert account["statement_count"] == 1
+        assert account["difference"] == "0.00"
 
     async def test_audit_requires_auth(self, client: AsyncClient) -> None:
         resp = await client.get("/api/v1/audit")

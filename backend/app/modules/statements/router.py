@@ -132,6 +132,8 @@ async def _quality_for_uploaded_file(uploaded_file: UploadedFile, db: AsyncSessi
         warnings.append("La cartola no tiene movimientos importados.")
     if uploaded_file.period_start is None or uploaded_file.period_end is None:
         warnings.append("La cartola no tiene rango de fechas detectado.")
+    if uploaded_file.opening_balance is None or uploaded_file.closing_balance is None:
+        warnings.append("La cartola no tiene saldos inicial/final para reconciliación bancaria.")
     if duplicate_count:
         warnings.append(f"Hay {duplicate_count} movimiento(s) marcados como duplicados.")
     if uncategorized_count:
@@ -152,6 +154,8 @@ async def _quality_for_uploaded_file(uploaded_file: UploadedFile, db: AsyncSessi
         internal_transfer_count=internal_transfer_count,
         period_start=uploaded_file.period_start.isoformat() if uploaded_file.period_start else None,
         period_end=uploaded_file.period_end.isoformat() if uploaded_file.period_end else None,
+        opening_balance=str(uploaded_file.opening_balance) if uploaded_file.opening_balance is not None else None,
+        closing_balance=str(uploaded_file.closing_balance) if uploaded_file.closing_balance is not None else None,
         warnings=warnings,
     )
 
@@ -162,6 +166,8 @@ async def _create_uploaded_file_from_rows(preview: StatementPreview, account: Ac
         user_id=preview.user_id,
         filename=preview.filename,
         bank_detected=preview.bank_detected or "fallback",
+        opening_balance=preview.opening_balance,
+        closing_balance=preview.closing_balance,
         status="processed",
     )
     db.add(uploaded_file)
@@ -231,6 +237,8 @@ async def quality_stats(db: AsyncSession = Depends(get_db), current_user: User =
                 "parser": statement.bank_detected,
                 "status": statement.status,
                 "transactions": counts.get(statement.id, 0),
+                "opening_balance": str(statement.opening_balance) if statement.opening_balance is not None else None,
+                "closing_balance": str(statement.closing_balance) if statement.closing_balance is not None else None,
                 "period_start": statement.period_start.isoformat() if statement.period_start else None,
                 "period_end": statement.period_end.isoformat() if statement.period_end else None,
             }
@@ -258,7 +266,17 @@ async def create_preview(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"No se pudo parsear el PDF: {exc}") from exc
-    preview = StatementPreview(account_id=account_id, user_id=current_user.id, filename=file.filename or path.name, stored_filename=str(path), bank_detected=parsed["bank_detected"], status="ready", rows=parsed["rows"])
+    preview = StatementPreview(
+        account_id=account_id,
+        user_id=current_user.id,
+        filename=file.filename or path.name,
+        stored_filename=str(path),
+        bank_detected=parsed["bank_detected"],
+        opening_balance=Decimal(parsed["opening_balance"]) if parsed.get("opening_balance") is not None else None,
+        closing_balance=Decimal(parsed["closing_balance"]) if parsed.get("closing_balance") is not None else None,
+        status="ready",
+        rows=parsed["rows"],
+    )
     db.add(preview)
     await db.commit()
     await db.refresh(preview)
@@ -368,6 +386,8 @@ async def reprocess_statement(uploaded_file_id: uuid.UUID, db: AsyncSession = De
         parsed = parse_statement_pdf(path)
         rows = parsed["rows"]
         uploaded_file.bank_detected = parsed["bank_detected"]
+        uploaded_file.opening_balance = Decimal(parsed["opening_balance"]) if parsed.get("opening_balance") is not None else None
+        uploaded_file.closing_balance = Decimal(parsed["closing_balance"]) if parsed.get("closing_balance") is not None else None
     for row in rows:
         db.add(Transaction(uploaded_file_id=uploaded_file.id, account_id=account.id, user_id=current_user.id, currency=account.currency, date=datetime.date.fromisoformat(row["date"]), description=row["description"], amount=Decimal(str(row["amount"])), movement_type=row["movement_type"]))
     if rows:

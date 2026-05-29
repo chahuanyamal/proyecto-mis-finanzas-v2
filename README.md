@@ -12,7 +12,7 @@ Aplicación web local de finanzas personales para importar cartolas PDF, categor
 | Estilos | Tailwind CSS | 3.4.19 |
 | Estado/datos frontend | Zustand, TanStack React Query, Axios | 5.0.13, 5.100.14, 1.16.1 |
 | Gráficos | Recharts | 2.15.4 |
-| Tests frontend | Vitest, Testing Library, Playwright | 2.1.9, 16.3.2, 1.60.0 |
+| Tests frontend | Vitest, Testing Library, Playwright | 3.2.4, 16.3.2, 1.60.0 |
 | Backend | FastAPI, Uvicorn | 0.136.3, 0.48.0 |
 | Lenguaje backend | Python | 3.12 |
 | Dependencias backend | uv | 0.8+ |
@@ -59,6 +59,8 @@ Aplicación web local de finanzas personales para importar cartolas PDF, categor
 | `TEST_DATABASE_URL` | DB opcional para tests backend. | No | `sqlite+aiosqlite:///:memory:` |
 | `E2E_BASE_URL` | URL base para Playwright. | No | `http://localhost:1510` |
 | `E2E_SKIP_WEB_SERVER` | Evita que Playwright levante `npm run dev`. | No | `1` |
+| `E2E_USER` | Usuario usado por e2e autenticado. | No | `admin@finanzas.local` |
+| `E2E_PASSWORD` | Password usado por e2e autenticado. | No | `admin123` |
 
 ## Levantar en local (sin Docker)
 
@@ -202,7 +204,7 @@ URLs con Docker:
 6. La revocación JWT usa tabla en Postgres, sin job dedicado de limpieza periódica.
 7. No hay workers separados; parsing/OCR corre dentro del backend por restricción de v1.
 8. El frontend usa rewrites de Next.js hacia backend; en despliegues con proxy externo revisar `INTERNAL_API_URL` y CORS.
-9. `npm audit` reporta vulnerabilidades moderadas transitivas; no se aplicó `npm audit fix --force` porque puede introducir cambios mayores.
+9. `npm audit` reporta 2 vulnerabilidades moderadas transitivas en `next/postcss`; no se aplicó `npm audit fix --force` porque intenta un cambio mayor incorrecto.
 10. `npm ls --depth=0` puede mostrar `@emnapi/runtime` como extraneous en el workspace local; Docker usa `npm ci` limpio y no reproduce ese estado.
 
 ## Flujo de cartolas
@@ -212,3 +214,5 @@ URLs con Docker:
 3. Confirmar preview para crear cartola y movimientos importados.
 4. Revisar detalle de cartola, calidad individual, filtros, CSV, reproceso o rollback.
 5. Usar `Revisión` para movimientos sin categoría y creación de reglas reutilizables.
+
+Ver también `docs/validacion-cartolas-reales.md` para validar parsers con PDFs reales sin commitear datos sensibles.

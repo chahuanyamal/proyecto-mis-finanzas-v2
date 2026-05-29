@@ -24,6 +24,8 @@ class ParseResult(TypedDict):
     bank_detected: str
     extraction_method: Literal["text", "ocr"]
     rows: list[ParsedRow]
+    opening_balance: str | None
+    closing_balance: str | None
 
 
 class StatementParseError(RuntimeError):
@@ -50,7 +52,8 @@ def parse_statement_pdf(path: Path, parser_key: str | None = None) -> ParseResul
         raise StatementParseError(f"El parser seleccionado no pudo extraer movimientos: {parser_key}")
     bank = _detect_bank(text)
     rows = _parse_rows(text, bank)
-    return {"bank_detected": f"{bank}:{method}", "extraction_method": method, "rows": rows}
+    opening, closing = _extract_balances(text)
+    return {"bank_detected": f"{bank}:{method}", "extraction_method": method, "rows": rows, "opening_balance": opening, "closing_balance": closing}
 
 
 def _parse_with_registry(path: Path, text: str, method: Literal["text", "ocr"], parser_key: str | None = None) -> ParseResult | None:
@@ -91,7 +94,15 @@ def _parse_with_registry(path: Path, text: str, method: Literal["text", "ocr"], 
     rows = _rows_from_result(result)
     if not rows:
         return None
-    return {"bank_detected": f"{parser_impl.key}:{method}", "extraction_method": method, "rows": rows}
+    opening = getattr(result, "opening_balance", None)
+    closing = getattr(result, "closing_balance", None)
+    return {
+        "bank_detected": f"{parser_impl.key}:{method}",
+        "extraction_method": method,
+        "rows": rows,
+        "opening_balance": str(opening) if opening is not None else None,
+        "closing_balance": str(closing) if closing is not None else None,
+    }
 
 
 def _rows_from_result(result: object) -> list[ParsedRow]:
@@ -227,6 +238,21 @@ def _parse_signed_amount_rows(text: str) -> list[ParsedRow]:
             continue
         rows.append(_row(date, match.group("description"), abs(amount), "income" if amount > 0 else "expense"))
     return rows
+
+
+def _extract_balances(text: str) -> tuple[str | None, str | None]:
+    normalized = _normalize_text(text)
+    opening = _find_balance(normalized, ("saldo inicial", "saldo anterior", "beginning balance"))
+    closing = _find_balance(normalized, ("saldo final", "saldo cierre", "ending balance"))
+    return (str(opening) if opening is not None else None, str(closing) if closing is not None else None)
+
+
+def _find_balance(text: str, labels: tuple[str, ...]) -> Decimal | None:
+    for label in labels:
+        match = re.search(rf"{re.escape(label)}\s*:?\s*(-?\$?\s?[\d\.,]+)", text)
+        if match:
+            return _parse_amount(match.group(1))
+    return None
 
 
 def _row(date: datetime.date, description: str, amount: Decimal, movement_type: MovementType) -> ParsedRow:

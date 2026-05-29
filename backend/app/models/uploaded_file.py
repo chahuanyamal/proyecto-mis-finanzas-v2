@@ -3,7 +3,9 @@ from __future__ import annotations
 import uuid
 import datetime
 
-from sqlalchemy import Date, ForeignKey, String
+from decimal import Decimal
+
+from sqlalchemy import Date, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -34,6 +36,8 @@ class UploadedFile(Base, TimestampMixin):
     period_end: Mapped[datetime.date | None] = mapped_column(
         Date, nullable=True
     )
+    opening_balance: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    closing_balance: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
     )

@@ -78,6 +78,48 @@ def test_parse_statement_pdf_includes_bank_and_extraction_method(monkeypatch: py
     assert result["rows"][0]["amount"] == "15990"
 
 
+def test_parse_statement_pdf_extracts_simple_balances(monkeypatch: pytest.MonkeyPatch) -> None:
+    text = """
+    Cartola genérica
+    Saldo inicial: $ 1.000
+    03-05-2026 Deposito 300
+    Saldo final: $ 1.300
+    """
+    monkeypatch.setattr(parser, "_extract_text", lambda _p: (text, "text"))
+
+    result = parser.parse_statement_pdf(Path("cartola.pdf"))
+
+    assert result["opening_balance"] == "1000"
+    assert result["closing_balance"] == "1300"
+
+
+def test_registry_result_preserves_balances(monkeypatch: pytest.MonkeyPatch) -> None:
+    result = SimpleNamespace(
+        opening_balance=Decimal("1000"),
+        closing_balance=Decimal("1300"),
+        transactions=[{"date": datetime.date(2026, 5, 1), "description": "Deposito", "amount": Decimal("300"), "movement_type": "credit"}],
+    )
+
+    class FakeParser:
+        key = "fake"
+
+        def parse(self, *_args: object) -> object:
+            return result
+
+    class FakeRegistry:
+        def detect(self, *_args: object) -> tuple[FakeParser, float]:
+            return FakeParser(), 1.0
+
+    monkeypatch.setattr(Path, "read_bytes", lambda _self: b"pdf")
+    monkeypatch.setattr("app.modules.parsers.registry.ParserRegistry", FakeRegistry)
+
+    parsed = parser._parse_with_registry(Path("fake.pdf"), "x" * 500, "text")
+
+    assert parsed is not None
+    assert parsed["opening_balance"] == "1000"
+    assert parsed["closing_balance"] == "1300"
+
+
 def test_forced_unknown_parser_raises_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(parser, "_extract_text", lambda _p: ("Banco BICE\n03-05-2026 Restaurante 15.990 - 100.000", "text"))
 

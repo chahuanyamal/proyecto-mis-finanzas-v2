@@ -15,6 +15,8 @@ class UploadedFileOut(BaseModel):
     bank_detected: str | None
     period_start: datetime.date | None
     period_end: datetime.date | None
+    opening_balance: str | None = None
+    closing_balance: str | None = None
     status: str
 
     model_config = {"from_attributes": True}
@@ -60,6 +62,8 @@ class StatementPreviewOut(BaseModel):
     user_id: uuid.UUID
     filename: str
     bank_detected: str | None
+    opening_balance: str | None = None
+    closing_balance: str | None = None
     status: str
     rows: list[dict]
     summary: PreviewSummary | None = None
@@ -89,4 +93,6 @@ class StatementQualityOut(BaseModel):
     internal_transfer_count: int
     period_start: str | None
     period_end: str | None
+    opening_balance: str | None
+    closing_balance: str | None
     warnings: list[str] = Field(default_factory=list)
