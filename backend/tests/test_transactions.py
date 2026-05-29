@@ -163,3 +163,42 @@ class TestTransactions:
     async def test_transaction_without_auth_returns_401(self, client: AsyncClient) -> None:
         resp = await client.get("/api/v1/transactions")
         assert resp.status_code == 401
+
+
+class TestDetectInternalTransfers:
+    async def _account(self, client, name):
+        r = await client.post("/api/v1/accounts", json={
+            "name": name, "account_type": "checking", "currency": "CLP", "balance": "0",
+        })
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    async def _tx(self, client, account_id, mtype, amount, date, desc):
+        r = await client.post("/api/v1/transactions", json={
+            "account_id": account_id, "date": date, "description": desc,
+            "amount": amount, "currency": "CLP", "movement_type": mtype,
+        })
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    async def test_detect_matches_mirror_movements(self, auth_client) -> None:
+        a = await self._account(auth_client, "Origen")
+        b = await self._account(auth_client, "Destino")
+        await self._tx(auth_client, a, "expense", "100000", "2026-03-01", "Transferencia salida")
+        await self._tx(auth_client, b, "income", "100000", "2026-03-02", "Transferencia entrada")
+        # par no relacionado (mismo monto, misma cuenta) no debe emparejar
+        await self._tx(auth_client, a, "expense", "5000", "2026-03-05", "Cafe")
+
+        resp = await auth_client.post("/api/v1/transactions/detect-transfers")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["pairs"] == 1
+        assert body["transactions"] == 2
+
+        # idempotente: ya marcados, no re-empareja
+        again = await auth_client.post("/api/v1/transactions/detect-transfers")
+        assert again.json()["pairs"] == 0
+
+    async def test_detect_transfers_requires_auth(self, client) -> None:
+        resp = await client.post("/api/v1/transactions/detect-transfers")
+        assert resp.status_code == 401
