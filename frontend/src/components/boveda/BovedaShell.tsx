@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { CommandPalette } from "./CommandPalette";
 import { BOVEDA_NAV, BOVEDA_NAV_FLAT, isActive, openCommandPalette } from "./nav";
+import { useNavCounts } from "./useNavCounts";
 
 const MONTH_LABEL = new Intl.DateTimeFormat("es-CL", { month: "short", year: "2-digit" })
   .format(new Date())
@@ -21,6 +22,9 @@ export function BovedaShell({ children }: { children: ReactNode }) {
   const initial = name.charAt(0).toUpperCase();
   const current = BOVEDA_NAV_FLAT.find((i) => isActive(pathname, i.href));
   const currentGroup = BOVEDA_NAV.find((g) => g.items.some((i) => isActive(pathname, i.href)));
+  const counts = useNavCounts(Boolean(user));
+  const fmtCount = (n: number | undefined) =>
+    n === undefined ? null : n > 999 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
 
   async function handleLogout() {
     await logout();
@@ -56,13 +60,16 @@ export function BovedaShell({ children }: { children: ReactNode }) {
                 <h6>{group.section}</h6>
                 {group.items.map((item) => {
                   const active = isActive(pathname, item.href);
+                  const count = fmtCount(counts[item.href]);
+                  const isAlert = item.alert && (counts[item.href] ?? 0) > 0;
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`nav-item ${active ? "active" : ""} ${item.alert ? "alert" : ""}`}
+                      className={`nav-item ${active ? "active" : ""} ${isAlert ? "alert" : ""}`}
                     >
                       {item.label}
+                      {count !== null ? <span className="count">{count}</span> : null}
                     </Link>
                   );
                 })}

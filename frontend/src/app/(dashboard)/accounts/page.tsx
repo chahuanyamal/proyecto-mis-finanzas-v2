@@ -1,8 +1,8 @@
 "use client";
 
-import { accountsApi } from "@/lib/api";
+import { accountsApi, patrimonioApi } from "@/lib/api";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import type { Account, AccountPayload, Institution } from "@/lib/api-types";
+import type { Account, AccountPayload, Institution, PatrimonioAccountTrend } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -67,11 +67,47 @@ const toneStyles: Record<string, { background: string; color: string }> = {
   neutral: { background: "var(--bg-3)", color: "var(--text-2)" },
 };
 
+type AccountTrend = PatrimonioAccountTrend["accounts"][number];
+
+function Sparkline({ trend }: { trend: AccountTrend }) {
+  const points = trend.points;
+  if (!points || points.length < 2) return <div className="h-[28px] w-[88px]" />;
+  const delta = Number(trend.delta ?? 0);
+  const color = delta >= 0 ? "var(--acc)" : "var(--rust)";
+  const values = points.map((p) => Number(p.balance ?? 0));
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const w = 88;
+  const h = 28;
+  const pad = 2;
+  const coords = values
+    .map((v, i) => {
+      const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+      const y = pad + (1 - (v - min) / range) * (h - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+      <polyline
+        points={coords}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export default function AccountsPage() {
   const router = useRouter();
   const { user, hasVerified, fetchMe } = useAuthStore();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [accountTrends, setAccountTrends] = useState<AccountTrend[]>([]);
   const [form, setForm] = useState<AccountPayload>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,12 +131,14 @@ export default function AccountsPage() {
     setIsLoading(true);
     setError("");
     try {
-      const [accountsResponse, institutionsResponse] = await Promise.all([
+      const [accountsResponse, institutionsResponse, trendResponse] = await Promise.all([
         accountsApi.list(),
         accountsApi.institutions(),
+        patrimonioApi.accountTrend(12).catch(() => null),
       ]);
       setAccounts(accountsResponse.data);
       setInstitutions(institutionsResponse.data);
+      setAccountTrends(trendResponse?.data.accounts ?? []);
     } catch {
       setError("No se pudieron cargar las cuentas.");
     } finally {
@@ -189,13 +227,20 @@ export default function AccountsPage() {
     accounts.map((a) => a.institution_id).filter((id): id is string => Boolean(id)),
   ).size;
 
-  const GRID = "grid grid-cols-[46px_1fr_200px_160px] gap-3.5 items-center";
+  const trendMap = useMemo(() => {
+    const map = new Map<string, AccountTrend>();
+    for (const t of accountTrends) map.set(t.id, t);
+    return map;
+  }, [accountTrends]);
+
+  const GRID = "grid grid-cols-[46px_1fr_140px_90px_160px] gap-3.5 items-center";
 
   function Row({ account }: { account: Account }) {
     const tone = typeTone[account.account_type];
     const balance = asNumber(account.balance);
     const pct = netWorth !== 0 ? Math.abs((balance / netWorth) * 100) : 0;
     const negative = balance < 0;
+    const trend = trendMap.get(account.id);
     return (
       <div
         className={`${GRID} cursor-pointer border-b border-[color:var(--line-2)] px-4 py-3.5 last:border-0 hover:bg-[color:var(--bg-3)]`}
@@ -219,6 +264,18 @@ export default function AccountsPage() {
             {account.institution?.name ?? "Manual"}
           </span>
         </div>
+        <div className="flex items-center gap-2">
+          {trend ? <Sparkline trend={trend} /> : <div className="h-[28px] w-[88px]" />}
+          {trend && trend.delta_percent != null ? (
+            <span
+              className="font-mono text-[10px]"
+              style={{ color: Number(trend.delta) >= 0 ? "var(--acc)" : "var(--rust)" }}
+            >
+              {Number(trend.delta) >= 0 ? "+" : ""}
+              {Number(trend.delta_percent).toFixed(1)}%
+            </span>
+          ) : null}
+        </div>
         <div
           className="flex items-center justify-end gap-3 text-right"
           onClick={(e) => e.stopPropagation()}
@@ -227,6 +284,15 @@ export default function AccountsPage() {
             {formatMoney(balance, account.currency)}
             <span className="mt-[3px] block font-normal text-[11px] text-[color:var(--text-3)]">
               {pct.toFixed(1)}% patr.
+            </span>
+            <span
+              className="mt-[4px] block h-[3px] w-full overflow-hidden rounded-full"
+              style={{ background: "var(--bg-3)" }}
+            >
+              <span
+                className="block h-full rounded-full"
+                style={{ width: `${Math.min(pct, 100)}%`, background: "var(--acc)" }}
+              />
             </span>
           </div>
           <ConfirmButton
@@ -433,6 +499,7 @@ export default function AccountsPage() {
             <div />
             <div>Cuenta</div>
             <div>Banco</div>
+            <div>Tendencia 30d</div>
             <div className="r">Saldo · % patr.</div>
           </div>
 
