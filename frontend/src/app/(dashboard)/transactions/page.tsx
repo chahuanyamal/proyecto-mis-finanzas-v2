@@ -138,6 +138,16 @@ export default function TransactionsPage() {
     try { const { data } = await transactionsApi.autoCategorize(); setInfo(`Auto-categorización: ${data.updated} movimiento(s) actualizados.`); await loadTransactions(); }
     catch { setError("No se pudo auto-categorizar."); } finally { setBusy(false); }
   }
+  async function detectTransfers() {
+    setBusy(true); setInfo(""); setError("");
+    try {
+      const { data } = await transactionsApi.detectTransfers();
+      setInfo(data.pairs > 0
+        ? `Transferencias internas: ${data.pairs} par(es) emparejado(s) (${data.transactions} movimientos).`
+        : "Transferencias internas: no se encontraron nuevos pares.");
+      await loadTransactions();
+    } catch { setError("No se pudo emparejar transferencias."); } finally { setBusy(false); }
+  }
   function exportFile(kind: "csv" | "excel") {
     const params = new URLSearchParams();
     if (filters.start_date) params.set("start_date", filters.start_date);
@@ -206,6 +216,7 @@ export default function TransactionsPage() {
             {PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
           <button onClick={() => void autoCategorize()} disabled={busy} className="btn ghost">{busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Auto</button>
+          <button onClick={() => void detectTransfers()} disabled={busy} title="Emparejar transferencias internas" className="btn ghost">{busy ? <Loader2 size={14} className="animate-spin" /> : "⇄"} Transferencias</button>
           <button onClick={() => exportFile("csv")} className="btn ghost"><Download size={14} /> CSV</button>
           <button onClick={() => exportFile("excel")} className="btn ghost"><Download size={14} /> Excel</button>
           <button onClick={() => { reset(); }} className="btn primary">+ Movimiento</button>

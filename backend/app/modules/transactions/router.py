@@ -531,6 +531,67 @@ async def auto_categorize_transactions(
     return {"updated": updated}
 
 
+@router.post("/detect-transfers")
+async def detect_internal_transfers(
+    days: int = Query(default=3, ge=0, le=10),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, int]:
+    """Empareja movimientos espejo entre cuentas propias (transferencias internas).
+
+    Busca pares ingreso/gasto del mismo monto y moneda, en cuentas distintas,
+    con fechas cercanas (±``days``), y los marca como ``is_internal_transfer``
+    para no contarlos dos veces en ingresos/gastos.
+    """
+    result = await db.execute(
+        select(Transaction)
+        .join(Account)
+        .where(
+            Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
+            Transaction.is_internal_transfer.is_(False),
+            Transaction.is_duplicate.is_(False),
+        )
+        .order_by(Transaction.date.asc())
+    )
+    txs = list(result.scalars().all())
+    incomes = [t for t in txs if t.movement_type == "income"]
+    expenses = [t for t in txs if t.movement_type == "expense"]
+    used: set[uuid.UUID] = set()
+    pairs = 0
+
+    for exp in expenses:
+        if exp.id in used:
+            continue
+        exp_amt = abs(Decimal(exp.amount or 0))
+        best = None
+        for inc in incomes:
+            if inc.id in used or inc.account_id == exp.account_id:
+                continue
+            if inc.currency != exp.currency:
+                continue
+            if abs(Decimal(inc.amount or 0)) != exp_amt:
+                continue
+            if abs((inc.date - exp.date).days) > days:
+                continue
+            if best is None or abs((inc.date - exp.date).days) < abs((best.date - exp.date).days):
+                best = inc
+        if best is not None:
+            exp.is_internal_transfer = True
+            best.is_internal_transfer = True
+            used.add(exp.id)
+            used.add(best.id)
+            pairs += 1
+
+    if pairs:
+        await log_audit(
+            db, user_id=current_user.id, action="detect_transfers",
+            entity_type="transaction", entity_id=None, metadata={"pairs": pairs},
+        )
+        await db.commit()
+    return {"pairs": pairs, "transactions": pairs * 2}
+
+
 async def _owned_transactions(
     transaction_ids: list[uuid.UUID], db: AsyncSession, current_user: User
 ) -> list[Transaction]:

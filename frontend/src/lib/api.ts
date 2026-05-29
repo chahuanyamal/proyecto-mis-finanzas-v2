@@ -165,6 +165,7 @@ export const transactionsApi = {
     api.patch<Transaction>(`/v1/transactions/${id}`, payload),
   remove: (id: string) => api.delete(`/v1/transactions/${id}`),
   autoCategorize: () => api.post<AutoCategorizeResult>("/v1/transactions/auto-categorize"),
+  detectTransfers: () => api.post<{ pairs: number; transactions: number }>("/v1/transactions/detect-transfers"),
   setNotes: (id: string, notes: string | null) => api.patch<Transaction>(`/v1/transactions/${id}/notes`, { notes }),
   setFlag: (id: string, is_flagged: boolean, reason?: string | null) =>
     api.patch<Transaction>(`/v1/transactions/${id}/flag`, { is_flagged, reason }),
