@@ -3,6 +3,7 @@
 import { reportsApi } from "@/lib/api";
 import type { AnnualReport } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
+import { usePeriodStore } from "@/stores/period";
 import { Download, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -21,7 +22,7 @@ export default function ReportsPage() {
   const router = useRouter();
   const { user, hasVerified, fetchMe } = useAuthStore();
   const [year, setYear] = useState(currentYear());
-  const [currency, setCurrency] = useState("CLP");
+  const currency = usePeriodStore((s) => s.currency);
   const [report, setReport] = useState<AnnualReport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -68,10 +69,6 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <div className="seg">
-            <button className={currency === "CLP" ? "on" : ""} onClick={() => setCurrency("CLP")}>CLP</button>
-            <button className={currency === "USD" ? "on" : ""} onClick={() => setCurrency("USD")}>USD</button>
-          </div>
           <a className="btn ghost" href={reportsApi.annualCsvUrl(year)} target="_blank" rel="noreferrer">
             <Download size={14} /> CSV
           </a>

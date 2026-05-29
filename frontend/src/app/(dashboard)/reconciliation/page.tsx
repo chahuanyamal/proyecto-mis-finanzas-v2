@@ -3,6 +3,7 @@
 import { reconciliationApi } from "@/lib/api";
 import type { ReconciliationSummary } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
+import { usePeriodStore } from "@/stores/period";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -14,7 +15,7 @@ function money(value: string, currency: string) {
 export default function ReconciliationPage() {
   const router = useRouter();
   const { user, hasVerified, fetchMe } = useAuthStore();
-  const [currency, setCurrency] = useState("CLP");
+  const currency = usePeriodStore((s) => s.currency);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [tolerance, setTolerance] = useState("1");
@@ -42,12 +43,6 @@ export default function ReconciliationPage() {
           </h1>
           <div className="sub">
             <strong>control</strong> · cartola vs. saldo calculado — usa saldos de cartola cuando existen
-          </div>
-        </div>
-        <div className="actions">
-          <div className="seg">
-            <button className={currency === "CLP" ? "on" : ""} onClick={() => setCurrency("CLP")}>CLP</button>
-            <button className={currency === "USD" ? "on" : ""} onClick={() => setCurrency("USD")}>USD</button>
           </div>
         </div>
       </div>

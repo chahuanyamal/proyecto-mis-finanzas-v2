@@ -3,6 +3,7 @@
 import { patrimonioApi } from "@/lib/api";
 import type { NetWorth, PatrimonioAccountTrend, PatrimonioCompare, PatrimonioHistory } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
+import { usePeriodStore } from "@/stores/period";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -55,7 +56,7 @@ function initials(name: string): string {
 export default function PatrimonioPage() {
   const router = useRouter();
   const { user, hasVerified, fetchMe } = useAuthStore();
-  const [currency, setCurrency] = useState("CLP");
+  const currency = usePeriodStore((s) => s.currency);
   const [data, setData] = useState<NetWorth | null>(null);
   const [history, setHistory] = useState<PatrimonioHistory | null>(null);
   const [trend, setTrend] = useState<PatrimonioAccountTrend | null>(null);
@@ -138,10 +139,6 @@ export default function PatrimonioPage() {
         <div>
           <h1>Patrimonio <span className="serif">neto</span></h1>
           <div className="sub">SALDOS ACTUALES · TENDENCIA 12M · COMPARACIÓN VS. MES ANTERIOR</div>
-        </div>
-        <div className="seg">
-          <button className={currency === "CLP" ? "on" : ""} onClick={() => setCurrency("CLP")}>CLP</button>
-          <button className={currency === "USD" ? "on" : ""} onClick={() => setCurrency("USD")}>USD</button>
         </div>
       </div>
 

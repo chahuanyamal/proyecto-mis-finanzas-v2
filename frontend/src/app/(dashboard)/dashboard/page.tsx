@@ -1,16 +1,10 @@
 "use client";
 
 import { dashboardApi } from "@/lib/api";
-import type { DashboardPeriod, DashboardSummary, DashboardTrends } from "@/lib/api-types";
+import type { DashboardSummary, DashboardTrends } from "@/lib/api-types";
+import { usePeriodStore } from "@/stores/period";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
-const PERIODS: Array<{ value: DashboardPeriod; label: string }> = [
-  { value: "mtd", label: "Mes" },
-  { value: "30d", label: "30d" },
-  { value: "ytd", label: "Año" },
-  { value: "12m", label: "12m" },
-];
 
 const CAT_TONES = ["", "r", "g", "v", "b"] as const;
 
@@ -34,8 +28,7 @@ function formatPercent(value: string | null): string {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [period, setPeriod] = useState<DashboardPeriod>("mtd");
-  const [currency, setCurrency] = useState("CLP");
+  const { period, currency } = usePeriodStore();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [trends, setTrends] = useState<DashboardTrends | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -109,19 +102,6 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="actions">
-          <div className="seg">
-            {PERIODS.map((p) => (
-              <button key={p.value} className={period === p.value ? "on" : ""} onClick={() => setPeriod(p.value)}>
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <button
-            className="pill"
-            onClick={() => setCurrency((c) => (c === "CLP" ? "USD" : "CLP"))}
-          >
-            {currency} ▾
-          </button>
           <button className="btn primary" onClick={() => router.push("/transactions")}>
             + Movimiento
           </button>
