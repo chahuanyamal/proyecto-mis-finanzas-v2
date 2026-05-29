@@ -55,3 +55,39 @@ class TestRecurring:
     async def test_recurring_requires_auth(self, client: AsyncClient) -> None:
         resp = await client.post("/api/v1/recurring/detect")
         assert resp.status_code == 401
+
+
+class TestRecurringCandidates:
+    async def _account(self, client: AsyncClient) -> str:
+        resp = await client.post("/api/v1/accounts", json={
+            "name": "Cuenta candidatos", "account_type": "checking",
+            "currency": "CLP", "balance": "0",
+        })
+        assert resp.status_code == 201
+        return resp.json()["id"]
+
+    async def test_candidates_do_not_register(self, auth_client: AsyncClient) -> None:
+        account_id = await self._account(auth_client)
+        for date in ["2026-01-10", "2026-02-10", "2026-03-10"]:
+            resp = await auth_client.post("/api/v1/transactions", json={
+                "account_id": account_id, "date": date,
+                "description": "Spotify Premium", "amount": "5990",
+                "currency": "CLP", "movement_type": "expense",
+            })
+            assert resp.status_code == 201
+
+        cand = await auth_client.get("/api/v1/recurring/detect/candidates")
+        assert cand.status_code == 200
+        body = cand.json()
+        assert body["created"] == 0
+        assert body["detected"] >= 1
+        assert any(i["frequency"] == "monthly" for i in body["items"])
+
+        # No debe haberse registrado nada todavía.
+        listed = await auth_client.get("/api/v1/recurring")
+        assert listed.status_code == 200
+        assert listed.json() == []
+
+    async def test_candidates_require_auth(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/v1/recurring/detect/candidates")
+        assert resp.status_code == 401

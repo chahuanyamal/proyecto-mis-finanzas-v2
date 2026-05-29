@@ -103,11 +103,8 @@ async def create_recurring(
     return item
 
 
-@router.post("/detect", response_model=RecurringDetectResult)
-async def detect_recurring(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> RecurringDetectResult:
+async def _collect_candidates(db: AsyncSession, current_user: User) -> list[RecurringDetectItem]:
+    """Detecta patrones recurrentes sin registrarlos (preview)."""
     result = await db.execute(
         select(Transaction)
         .where(
@@ -129,8 +126,7 @@ async def detect_recurring(
         for item in existing.scalars().all()
     }
 
-    detected: list[RecurringDetectItem] = []
-    created = 0
+    candidates: list[RecurringDetectItem] = []
     for (name, amount, currency, movement_type), rows in grouped.items():
         if len(rows) < 3 or (name, amount, currency, movement_type) in existing_keys:
             continue
@@ -138,18 +134,37 @@ async def detect_recurring(
         frequency = _guess_frequency(dates)
         if frequency is None:
             continue
-        last_date = max(dates)
-        next_date = _add_period(last_date, frequency)
-        item = RecurringDetectItem(
+        candidates.append(RecurringDetectItem(
             name=name.title(),
             amount=Decimal(amount),
             currency=currency,
             movement_type=movement_type,
             frequency=frequency,
-            next_date=next_date,
+            next_date=_add_period(max(dates), frequency),
             occurrences=len(rows),
-        )
-        detected.append(item)
+        ))
+    candidates.sort(key=lambda c: c.occurrences, reverse=True)
+    return candidates
+
+
+@router.get("/detect/candidates", response_model=RecurringDetectResult)
+async def detect_candidates(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> RecurringDetectResult:
+    """Patrones recurrentes detectados SIN registrarlos, para confirmar uno a uno."""
+    candidates = await _collect_candidates(db, current_user)
+    return RecurringDetectResult(detected=len(candidates), created=0, items=candidates)
+
+
+@router.post("/detect", response_model=RecurringDetectResult)
+async def detect_recurring(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> RecurringDetectResult:
+    candidates = await _collect_candidates(db, current_user)
+    created = 0
+    for item in candidates:
         db.add(RecurringExpense(
             user_id=current_user.id,
             name=item.name,
@@ -163,7 +178,7 @@ async def detect_recurring(
         created += 1
     if created:
         await db.commit()
-    return RecurringDetectResult(detected=len(detected), created=created, items=detected)
+    return RecurringDetectResult(detected=len(candidates), created=created, items=candidates)
 
 
 @router.get("/upcoming", response_model=list[UpcomingRecurring])

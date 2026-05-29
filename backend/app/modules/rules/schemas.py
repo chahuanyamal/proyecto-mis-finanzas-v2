@@ -38,3 +38,32 @@ class CategoryRuleOut(BaseModel):
     @field_serializer("id", "user_id", "target_category_id")
     def serialize_uuid(self, value: uuid.UUID) -> str:
         return str(value)
+
+
+class RulePreviewRequest(BaseModel):
+    field: str = Field(default="description", max_length=50)
+    operator: str = Field(default="contains", max_length=20)
+    pattern: str = Field(min_length=1)
+
+
+class RulePreviewSample(BaseModel):
+    id: uuid.UUID
+    date: str
+    description: str
+    amount: str
+    has_category: bool
+
+    @field_serializer("id")
+    def serialize_sample_id(self, value: uuid.UUID) -> str:
+        return str(value)
+
+
+class RulePreviewResult(BaseModel):
+    count: int
+    uncategorized: int
+    samples: list[RulePreviewSample]
+
+
+class RuleApplyResult(BaseModel):
+    matched: int
+    updated: int
