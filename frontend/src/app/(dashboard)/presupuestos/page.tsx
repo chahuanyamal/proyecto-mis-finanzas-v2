@@ -1,37 +1,59 @@
 "use client";
 
-import { budgetsApi, categoriesApi } from "@/lib/api";
-import type { Budget, BudgetPayload, Category } from "@/lib/api-types";
+import { budgetsApi, categoriesApi, dashboardApi } from "@/lib/api";
+import type { Budget, BudgetPayload, Category, MonthlyDashboard } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
-import { Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 function currentMonth(): string { return new Date().toISOString().slice(0, 7); }
 const emptyForm: BudgetPayload = { category_id: "", month: currentMonth(), amount: "100000", alert_at_percent: 80 };
+
+const MARK_COLORS = ["#5EE9B5", "#E87A5B", "#E6B85C", "#7AB0FF", "#B49CFF", "#807A6E"];
+const MONTH_NAMES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+function asNumber(value: string | null | undefined): number { return Number(value ?? 0); }
+function fmt(value: number): string { return new Intl.NumberFormat("es-CL").format(Math.round(value)); }
+function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return d.toISOString().slice(0, 7);
+}
+function monthLabel(month: string): { name: string; year: string } {
+  const [y, m] = month.split("-").map(Number);
+  return { name: MONTH_NAMES[m - 1] ?? month, year: String(y) };
+}
 
 export default function BudgetsPage() {
   const router = useRouter();
   const { user, hasVerified, fetchMe } = useAuthStore();
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [monthly, setMonthly] = useState<MonthlyDashboard | null>(null);
   const [form, setForm] = useState<BudgetPayload>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
   useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/presupuestos"); }, [hasVerified, router, user]);
 
   async function loadData(month = form.month) {
     try {
-      const [budgetResponse, categoryResponse] = await Promise.all([budgetsApi.list(month), categoriesApi.list()]);
+      const [budgetResponse, categoryResponse, monthlyResponse] = await Promise.all([
+        budgetsApi.list(month),
+        categoriesApi.list(),
+        dashboardApi.monthly(month),
+      ]);
       setBudgets(budgetResponse.data);
       setCategories(categoryResponse.data);
+      setMonthly(monthlyResponse.data);
     } catch { setError("No se pudieron cargar los presupuestos."); }
   }
   useEffect(() => { if (user) void loadData(); }, [user]);
-  function reset() { setForm({ ...emptyForm, month: form.month }); setEditingId(null); }
-  function edit(budget: Budget) { setEditingId(budget.id); setForm({ category_id: budget.category_id, month: budget.month, amount: budget.amount, alert_at_percent: budget.alert_at_percent }); }
+  function reset() { setForm({ ...emptyForm, month: form.month }); setEditingId(null); setShowForm(false); }
+  function edit(budget: Budget) { setEditingId(budget.id); setForm({ category_id: budget.category_id, month: budget.month, amount: budget.amount, alert_at_percent: budget.alert_at_percent }); setShowForm(true); }
+  function startCreate(categoryId = "") { setEditingId(null); setForm({ ...emptyForm, month: form.month, category_id: categoryId }); setShowForm(true); }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
@@ -43,6 +65,218 @@ export default function BudgetsPage() {
   async function remove(id: string) {
     try { await budgetsApi.remove(id); await loadData(); } catch { setError("No se pudo eliminar el presupuesto."); }
   }
+  function changeMonth(delta: number) {
+    const next = shiftMonth(form.month, delta);
+    setForm((v) => ({ ...v, month: next }));
+    void loadData(next);
+  }
 
-  return <main className="min-h-screen bg-surface-950 p-8 text-slate-100"><div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1fr_360px]"><section className="rounded-lg border border-slate-800 bg-surface-900 p-6"><p className="text-xs font-semibold uppercase tracking-[0.35em] text-brand-400">Presupuestos</p><h1 className="mt-2 text-3xl font-bold">Control mensual</h1>{error ? <p className="mt-4 rounded bg-red-950/50 px-3 py-2 text-sm text-red-200">{error}</p> : null}<div className="mt-6 space-y-3">{budgets.map((budget) => <div key={budget.id} className="flex items-center justify-between rounded border border-slate-800 bg-black/30 p-4"><div><p className="font-semibold">{budget.category?.name ?? budget.category_id}</p><p className="text-sm text-slate-400">{budget.month} · alerta {budget.alert_at_percent}%</p></div><div className="flex items-center gap-4"><span>{budget.amount}</span><button onClick={() => edit(budget)} className="text-brand-300">Editar</button><button onClick={() => void remove(budget.id)} className="text-red-300"><Trash2 size={16} /></button></div></div>)}</div></section><aside className="rounded-lg border border-slate-800 bg-surface-900 p-6"><h2 className="text-lg font-semibold">{editingId ? "Editar" : "Nuevo"} presupuesto</h2><form onSubmit={save} className="mt-5 space-y-4"><input type="month" className="w-full rounded border border-slate-700 bg-black px-3 py-2" value={form.month} onChange={(e) => { setForm((v) => ({ ...v, month: e.target.value })); void loadData(e.target.value); }} required disabled={Boolean(editingId)} /><select className="w-full rounded border border-slate-700 bg-black px-3 py-2" value={form.category_id} onChange={(e) => setForm((v) => ({ ...v, category_id: e.target.value }))} required disabled={Boolean(editingId)}><option value="">Categoría</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><input type="number" step="0.01" className="w-full rounded border border-slate-700 bg-black px-3 py-2" value={form.amount} onChange={(e) => setForm((v) => ({ ...v, amount: e.target.value }))} required /><input type="number" min="1" max="100" className="w-full rounded border border-slate-700 bg-black px-3 py-2" value={form.alert_at_percent} onChange={(e) => setForm((v) => ({ ...v, alert_at_percent: Number(e.target.value) }))} required /><button className="flex w-full justify-center gap-2 rounded bg-brand-500 px-4 py-2 font-semibold text-black"><Save size={18} /> Guardar</button>{editingId ? <button type="button" onClick={reset} className="w-full rounded border border-slate-700 px-4 py-2">Cancelar</button> : null}</form></aside></div></main>;
+  // ── Derived data from monthly dashboard ──
+  const mLabel = monthLabel(form.month);
+  const today = new Date();
+  const isCurrentMonth = form.month === currentMonth();
+  const [yy, mm] = form.month.split("-").map(Number);
+  const daysInMonth = new Date(yy, mm, 0).getDate();
+  const dayOfMonth = isCurrentMonth ? today.getDate() : daysInMonth;
+  const monthPace = Math.round((dayOfMonth / daysInMonth) * 100);
+
+  const dashBudgets = monthly?.budgets ?? [];
+  const budgetById = useMemo(() => new Map(dashBudgets.map((b) => [b.id, b])), [dashBudgets]);
+
+  const totalBudgeted = dashBudgets.reduce((s, b) => s + asNumber(b.amount), 0);
+  const totalSpent = dashBudgets.reduce((s, b) => s + asNumber(b.spent), 0);
+  const totalRemaining = totalBudgeted - totalSpent;
+  const exceededCount = dashBudgets.filter((b) => b.status === "exceeded").length;
+  const overallPace = totalBudgeted > 0 ? Math.round((totalSpent / totalBudgeted) * 100) : 0;
+  const paceDelta = overallPace - monthPace;
+
+  // categories without a budget this month
+  const budgetedCategoryIds = new Set(budgets.map((b) => b.category_id));
+  const unbudgeted = categories.filter((c) => !budgetedCategoryIds.has(c.id));
+
+  const tagClass = (status: string) => (status === "exceeded" ? "over" : status === "warning" ? "warn" : "ok");
+
+  return (
+    <div className="content">
+      <div className="title-row">
+        <div>
+          <h1>Presupuestos <span className="serif">— {mLabel.name} {mLabel.year}</span></h1>
+          <div className="sub">
+            {budgets.length} presupuestos · gastaste <strong>${fmt(totalSpent)}</strong> de <strong>${fmt(totalBudgeted)}</strong>
+            {exceededCount > 0 ? <> · <strong style={{ color: "var(--rust)" }}>{exceededCount} excedido{exceededCount === 1 ? "" : "s"}</strong></> : null}
+            {" "}· día {dayOfMonth} de {daysInMonth}
+          </div>
+        </div>
+        <div className="actions">
+          <button className="btn primary" onClick={() => startCreate()}>+ Nuevo presupuesto</button>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="insight err" style={{ marginBottom: 20 }}>
+          <div className="insight-mark">!</div>
+          <div className="insight-body"><div className="txt">{error}</div></div>
+          <span />
+        </div>
+      ) : null}
+
+      {/* Month nav */}
+      <div className="panel" style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24, padding: "16px 20px" }}>
+        <button className="pill" onClick={() => changeMonth(-1)} aria-label="Mes anterior">‹</button>
+        <div className="serif" style={{ fontStyle: "italic", fontSize: 28, letterSpacing: "-0.015em" }}>
+          {mLabel.name}<span style={{ color: "var(--text-3)", fontSize: 20, marginLeft: 8 }}>{mLabel.year}</span>
+        </div>
+        <button className="pill" onClick={() => changeMonth(1)} aria-label="Mes siguiente">›</button>
+        <div className="mono" style={{ marginLeft: 18, fontSize: 11, color: "var(--text-3)", display: "flex", flexDirection: "column", gap: 2 }}>
+          <span>DÍA {dayOfMonth} / {daysInMonth}</span>
+          <span style={{ color: "var(--text)", fontSize: 13 }}>{monthPace}% del mes</span>
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 24 }}>
+          <div className="mono" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+            <span className="label">Presupuestado</span>
+            <span className="num" style={{ fontSize: 16 }}>${fmt(totalBudgeted)}</span>
+          </div>
+          <div className="mono" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+            <span className="label">Gastado</span>
+            <span className="num" style={{ fontSize: 16, color: totalSpent > totalBudgeted ? "var(--rust)" : "var(--acc)" }}>${fmt(totalSpent)}</span>
+          </div>
+          <div className="mono" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+            <span className="label">Restante</span>
+            <span className="num" style={{ fontSize: 16, color: totalRemaining < 0 ? "var(--rust)" : "var(--acc)" }}>${fmt(totalRemaining)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Pace bar */}
+      <div className="panel" style={{ marginBottom: 24 }}>
+        <div className="panel-head">
+          <h3>Ritmo general · todos los presupuestos</h3>
+          <span className="meta">
+            Gastaste <strong style={{ color: "var(--text)" }}>{overallPace}%</strong> · esperaríamos <strong style={{ color: "var(--text)" }}>{monthPace}%</strong>
+            {" "}· vas <strong style={{ color: paceDelta > 0 ? "var(--gold)" : "var(--acc)" }}>{paceDelta >= 0 ? "+" : ""}{paceDelta}pp {paceDelta >= 0 ? "por encima" : "por debajo"}</strong>
+          </span>
+        </div>
+        <div style={{ height: 8, background: "var(--bg-3)", borderRadius: 4, overflow: "hidden", position: "relative", marginBottom: 10 }}>
+          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, background: "var(--acc)", borderRadius: 4, width: `${Math.min(overallPace, 100)}%` }} />
+          <div style={{ position: "absolute", top: -3, bottom: -3, width: 2, background: "var(--text)", opacity: 0.7, left: `${Math.min(monthPace, 100)}%` }} />
+        </div>
+        <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-3)" }}>
+          <span>$0</span>
+          <span><strong style={{ color: "var(--text)" }}>Hoy · día {dayOfMonth}</strong></span>
+          <span>${fmt(totalBudgeted)} · {daysInMonth} {mLabel.name.slice(0, 3)}</span>
+        </div>
+      </div>
+
+      {/* Budgets grid */}
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 24 }}>
+        {budgets.map((budget, i) => {
+          const dash = budgetById.get(budget.id);
+          const amount = asNumber(budget.amount);
+          const spent = asNumber(dash?.spent);
+          const percent = dash?.percent ?? (amount > 0 ? Math.round((spent / amount) * 100) : 0);
+          const status = dash?.status ?? "ok";
+          const tone = tagClass(status);
+          const name = budget.category?.name ?? dash?.category_name ?? budget.category_id;
+          const remaining = amount - spent;
+          const mark = MARK_COLORS[i % MARK_COLORS.length];
+          return (
+            <div
+              key={budget.id}
+              className="panel"
+              style={{ padding: "18px 20px", cursor: "pointer", borderColor: status === "exceeded" ? "rgba(232,122,91,0.3)" : status === "warning" ? "rgba(230,184,92,0.3)" : "rgba(94,233,181,0.18)" }}
+              onClick={() => edit(budget)}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                <div className="mono" style={{ width: 30, height: 30, borderRadius: 7, display: "grid", placeItems: "center", fontWeight: 600, fontSize: 13, color: "white", background: mark }}>
+                  {name.charAt(0).toUpperCase()}
+                </div>
+                <div style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>
+                  {name}
+                  <span className="mono" style={{ display: "block", fontSize: 11, color: "var(--text-3)", fontWeight: 400, marginTop: 2 }}>
+                    ALERTA {budget.alert_at_percent}% · {budget.month}
+                  </span>
+                </div>
+                <span className={`chip ${tone}`} style={{ fontSize: 10 }}>{percent}%</span>
+              </div>
+              <div style={{ height: 6, background: "var(--bg-3)", borderRadius: 3, overflow: "hidden", position: "relative", marginBottom: 8 }}>
+                <div style={{ height: "100%", borderRadius: 3, width: `${Math.min(percent, 100)}%`, background: status === "exceeded" ? "var(--rust)" : status === "warning" ? "var(--gold)" : "var(--acc)" }} />
+                <div style={{ position: "absolute", top: -2, bottom: -2, width: 2, background: "var(--text-2)", opacity: 0.5, left: "100%" }} />
+              </div>
+              <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-3)" }}>
+                <span><span style={{ color: "var(--text)" }}>${fmt(spent)}</span> / ${fmt(amount)}</span>
+                <span style={{ color: remaining < 0 ? "var(--rust)" : "var(--acc)" }}>
+                  {remaining < 0 ? `$${fmt(-remaining)} sobre el límite` : `$${fmt(remaining)} restantes`}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        <div
+          onClick={() => startCreate()}
+          style={{ padding: "18px 20px", background: "transparent", border: "1.5px dashed var(--line)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, cursor: "pointer", color: "var(--text-3)", fontSize: 13, minHeight: 140 }}
+        >
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--bg-3)", display: "grid", placeItems: "center", fontSize: 18 }}>+</div>
+          <span>Nuevo presupuesto</span>
+        </div>
+      </section>
+
+      {/* Categorías sin presupuesto */}
+      {unbudgeted.length > 0 ? (
+        <div className="panel">
+          <div className="panel-head">
+            <h3>Categorías sin presupuesto</h3>
+            <span className="meta">crea un presupuesto desde cualquier categoría</span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {unbudgeted.map((c) => (
+              <span
+                key={c.id}
+                onClick={() => startCreate(c.id)}
+                className="mono"
+                style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", border: "1px dashed var(--line)", borderRadius: 99, background: "var(--bg)", fontSize: 12, color: "var(--text-2)", cursor: "pointer" }}
+              >
+                <span style={{ color: "var(--acc)", fontSize: 14, lineHeight: 1 }}>+</span>{c.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Form modal/panel */}
+      {showForm ? (
+        <div className="panel" style={{ marginTop: 24, maxWidth: 460 }}>
+          <div className="panel-head">
+            <h3>{editingId ? "Editar" : "Nuevo"} presupuesto</h3>
+          </div>
+          <form onSubmit={save}>
+            <div className="field">
+              <label>Mes</label>
+              <input type="month" className="input" value={form.month} onChange={(e) => { setForm((v) => ({ ...v, month: e.target.value })); void loadData(e.target.value); }} required disabled={Boolean(editingId)} />
+            </div>
+            <div className="field">
+              <label>Categoría</label>
+              <select className="input" value={form.category_id} onChange={(e) => setForm((v) => ({ ...v, category_id: e.target.value }))} required disabled={Boolean(editingId)}>
+                <option value="">Categoría</option>
+                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Monto</label>
+              <input type="number" step="0.01" className="input" value={form.amount} onChange={(e) => setForm((v) => ({ ...v, amount: e.target.value }))} required />
+            </div>
+            <div className="field">
+              <label>Alerta al %</label>
+              <input type="number" min="1" max="100" className="input" value={form.alert_at_percent} onChange={(e) => setForm((v) => ({ ...v, alert_at_percent: Number(e.target.value) }))} required />
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <button className="btn primary">Guardar</button>
+              <button type="button" className="btn ghost" onClick={reset}>Cancelar</button>
+              {editingId ? <button type="button" className="btn danger" style={{ marginLeft: "auto" }} onClick={() => void remove(editingId)}>Eliminar</button> : null}
+            </div>
+          </form>
+        </div>
+      ) : null}
+    </div>
+  );
 }

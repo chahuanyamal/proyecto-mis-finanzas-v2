@@ -78,88 +78,131 @@ export default function StatementDetailPage() {
   const totalExpense = rows.filter((t) => t.movement_type === "expense").reduce((a, t) => a + Number(t.amount), 0);
   const filteredSum = filtered.reduce((a, t) => a + (t.movement_type === "income" ? Number(t.amount) : -Number(t.amount)), 0);
 
+  const flowTabs: { key: Flow; label: string }[] = [
+    { key: "all", label: "todos" },
+    { key: "income", label: "abonos" },
+    { key: "expense", label: "cargos" },
+  ];
+
   return (
-    <main className="min-h-screen bg-surface-950 p-8 text-slate-100">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <button onClick={() => router.push("/statements")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200"><ArrowLeft size={16} /> Volver</button>
-
-        <section className="rounded-lg border border-slate-800 bg-surface-900 p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-brand-400">Cartola</p>
-          <h1 className="mt-2 break-all text-2xl font-bold">{meta?.filename ?? "…"}</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            {meta?.bank_detected ? `Banco: ${meta.bank_detected} · ` : ""}
-            Estado: {meta?.status ?? "-"}
-            {meta?.period_start && meta?.period_end ? ` · ${meta.period_start} → ${meta.period_end}` : ""}
-          </p>
-          {message ? <p className="mt-3 rounded bg-black/40 px-3 py-2 text-sm text-slate-300">{message}</p> : null}
-
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Movimientos</p><p className="mt-1 text-lg font-bold">{rows.length}</p></div>
-            <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Abonos</p><p className="mt-1 text-lg font-bold text-emerald-300">{fmt(String(totalIncome))}</p></div>
-            <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Cargos</p><p className="mt-1 text-lg font-bold text-red-300">{fmt(String(totalExpense))}</p></div>
-          </div>
-
-          <div className="mt-4 rounded border border-slate-800 bg-black/30 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm font-semibold">Calidad de importación</p>
-              <span className="text-xs text-slate-500">{quality?.parser ?? "parser desconocido"}</span>
-            </div>
-            <div className="mt-3 grid gap-2 text-xs sm:grid-cols-4">
-              <span className="rounded bg-slate-900 px-2 py-1">Sin categoría: {quality?.uncategorized_count ?? 0}</span>
-              <span className="rounded bg-slate-900 px-2 py-1">Duplicados: {quality?.duplicate_count ?? 0}</span>
-              <span className="rounded bg-slate-900 px-2 py-1">Internos: {quality?.internal_transfer_count ?? 0}</span>
-              <span className="rounded bg-slate-900 px-2 py-1">Rango: {quality?.period_start ?? "?"} → {quality?.period_end ?? "?"}</span>
-            </div>
-            {quality?.warnings.length ? <ul className="mt-3 space-y-1 text-sm text-amber-300">{quality.warnings.map((warning) => <li key={warning}>• {warning}</li>)}</ul> : <p className="mt-3 text-sm text-emerald-300">Sin advertencias detectadas.</p>}
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <div className="flex gap-1">
-              {(["all", "income", "expense"] as Flow[]).map((fl) => (
-                <button key={fl} onClick={() => setFlow(fl)} className={`rounded border px-3 py-1.5 text-xs ${flow === fl ? "border-brand-500 bg-brand-500/10 text-brand-300" : "border-slate-700 hover:bg-white/5"}`}>
-                  {fl === "all" ? "Todos" : fl === "income" ? "Abonos" : "Cargos"}
-                </button>
-              ))}
-            </div>
-            <input className="flex-1 rounded border border-slate-700 bg-black px-3 py-1.5 text-sm" placeholder="Buscar…" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <span className="text-xs text-slate-500">{filtered.length}/{rows.length}</span>
-            <button onClick={() => window.open(`${transactionsApi.exportCsvUrl()}?statement_id=${id}`, "_blank")} className="flex items-center gap-1 rounded border border-slate-700 px-3 py-1.5 text-xs hover:bg-white/5"><Download size={14} /> CSV</button>
-            <button onClick={() => void reprocess()} disabled={busy} className="flex items-center gap-1 rounded border border-slate-700 px-3 py-1.5 text-xs hover:bg-white/5 disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Reprocesar</button>
-            <ConfirmButton title="Revertir cartola" description="Esto eliminará la cartola y todos sus movimientos importados." confirmLabel="Revertir" disabled={busy} onConfirm={rollback} className="flex items-center gap-1 rounded border border-red-800 px-3 py-1.5 text-xs text-red-300 hover:bg-red-950/40 disabled:opacity-50"><RotateCcw size={14} /> Rollback</ConfirmButton>
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-slate-800 bg-surface-900 p-2">
-          {isLoading ? (
-            <p className="flex gap-2 p-6 text-slate-400"><Loader2 className="animate-spin" /> Cargando...</p>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase tracking-wider text-slate-500">
-                <tr><th className="px-3 py-2">#</th><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Descripción</th><th className="px-3 py-2">Categoría</th><th className="px-3 py-2 text-right">Monto</th></tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {filtered.map((tx, i) => (
-                  <tr key={tx.id} className="hover:bg-white/5">
-                    <td className="px-3 py-2 font-mono text-xs text-slate-600">{String(i + 1).padStart(3, "0")}</td>
-                    <td className="px-3 py-2">{tx.date}</td>
-                    <td className="px-3 py-2">
-                      {tx.description}
-                      {tx.is_internal_transfer ? <span className="ml-2 rounded bg-sky-900/60 px-1 text-[10px] text-sky-300">INT</span> : null}
-                      {tx.is_duplicate ? <span className="ml-1 rounded bg-amber-900/60 px-1 text-[10px] text-amber-300">DUP</span> : null}
-                    </td>
-                    <td className="px-3 py-2 text-slate-400">{tx.category?.name ?? "Sin asignar"}</td>
-                    <td className={`px-3 py-2 text-right font-mono ${tx.movement_type === "income" ? "text-emerald-300" : "text-red-300"}`}>{tx.movement_type === "income" ? "+" : "−"}{fmt(tx.amount, tx.currency)}</td>
-                  </tr>
-                ))}
-                {filtered.length === 0 ? <tr><td colSpan={5} className="px-3 py-2"><EmptyState title="Sin movimientos" description="No hay movimientos para el filtro actual." /></td></tr> : null}
-              </tbody>
-              {filtered.length ? (
-                <tfoot><tr className="border-t border-slate-700 text-sm"><td colSpan={4} className="px-3 py-2 text-right text-slate-400">Neto filtrado</td><td className={`px-3 py-2 text-right font-mono ${filteredSum >= 0 ? "text-emerald-300" : "text-red-300"}`}>{fmt(String(filteredSum))}</td></tr></tfoot>
-              ) : null}
-            </table>
-          )}
-        </section>
+    <div className="content">
+      <div className="crumbs" style={{ marginBottom: 18 }}>
+        <button onClick={() => router.push("/statements")} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: 0, color: "var(--text-3)", cursor: "pointer", font: "inherit" }} className="mono"><ArrowLeft size={14} /> cartolas</button>
+        <span className="sep">/</span><span className="here">{meta?.filename ?? "…"}</span>
       </div>
-    </main>
+
+      <div className="title-row">
+        <div>
+          <h1 style={{ wordBreak: "break-all" }}>{meta?.filename ?? "…"}</h1>
+          <div className="sub">
+            {meta?.bank_detected ? `banco ${meta.bank_detected} · ` : ""}estado {meta?.status ?? "-"}
+            {meta?.period_start && meta?.period_end ? ` · ${meta.period_start} → ${meta.period_end}` : ""}
+          </div>
+        </div>
+        <div className="actions">
+          <button onClick={() => window.open(`${transactionsApi.exportCsvUrl()}?statement_id=${id}`, "_blank")} className="btn ghost"><Download size={14} /> CSV</button>
+          <button onClick={() => void reprocess()} disabled={busy} className="btn ghost">{busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Reprocesar</button>
+          <ConfirmButton title="Revertir cartola" description="Esto eliminará la cartola y todos sus movimientos importados." confirmLabel="Revertir" disabled={busy} onConfirm={rollback} className="btn danger"><RotateCcw size={14} /> Rollback</ConfirmButton>
+        </div>
+      </div>
+
+      {message ? <div className="insight" style={{ marginBottom: 16 }}><div className="insight-mark">¶</div><div className="insight-body"><div className="txt">{message}</div></div><div /></div> : null}
+
+      {/* KPI strip */}
+      <div className="strip">
+        <div className="kpi on">
+          <div className="lbl"><span className="sw" />Movimientos</div>
+          <div className="val num">{rows.length}</div>
+          <div className="sub">extraídos de la cartola</div>
+        </div>
+        <div className="kpi">
+          <div className="lbl"><span className="sw" />Abonos</div>
+          <div className="val"><span className="cu">CLP</span><span className="pos">{fmt(String(totalIncome)).replace(/[^\d.,-]/g, "")}</span></div>
+          <div className="sub">{quality?.income_count ?? 0} mov.</div>
+        </div>
+        <div className="kpi r">
+          <div className="lbl"><span className="sw" />Cargos</div>
+          <div className="val"><span className="cu">CLP</span>{fmt(String(totalExpense)).replace(/[^\d.,-]/g, "")}</div>
+          <div className="sub">{quality?.expense_count ?? 0} mov.</div>
+        </div>
+        <div className="kpi g">
+          <div className="lbl"><span className="sw" />Calidad</div>
+          <div className="val num">{quality?.uncategorized_count ?? 0}</div>
+          <div className="sub">sin categoría · {quality?.parser ?? "parser ?"}</div>
+        </div>
+      </div>
+
+      {/* Quality panel */}
+      <div className={`insight${quality?.warnings.length ? "" : " ok"}`} style={{ marginBottom: 20 }}>
+        <div className="insight-mark">{quality?.warnings.length ? "!" : "✓"}</div>
+        <div className="insight-body">
+          <div className="lbl">Calidad de importación · {quality?.parser ?? "parser desconocido"}</div>
+          <div className="txt" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+            <span className="chip"><span className="sw" />Sin categoría {quality?.uncategorized_count ?? 0}</span>
+            <span className="chip g"><span className="sw" />Duplicados {quality?.duplicate_count ?? 0}</span>
+            <span className="chip b"><span className="sw" />Internos {quality?.internal_transfer_count ?? 0}</span>
+            <span className="chip k"><span className="sw" />Rango {quality?.period_start ?? "?"} → {quality?.period_end ?? "?"}</span>
+          </div>
+          {quality?.warnings.length ? (
+            <ul style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 2, color: "var(--gold)", fontSize: 12 }}>
+              {quality.warnings.map((warning) => <li key={warning}>• {warning}</li>)}
+            </ul>
+          ) : <p style={{ marginTop: 8, fontSize: 12, color: "var(--acc)" }}>Sin advertencias detectadas.</p>}
+        </div>
+        <div />
+      </div>
+
+      {/* Filters */}
+      <div className="filters">
+        <div className="filt-search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+          <input placeholder="Buscar descripción o categoría…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <span className="filt">{filtered.length}/{rows.length}</span>
+        <div className="seg" style={{ marginLeft: "auto" }}>
+          {flowTabs.map((fl) => (
+            <button key={fl.key} className={flow === fl.key ? "on" : ""} onClick={() => setFlow(fl.key)}>{fl.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="tbl">
+        <div className="tbl-head" style={{ display: "grid", gridTemplateColumns: "60px 110px 1fr 200px 140px", gap: 14 }}>
+          <div>#</div><div>Fecha</div><div>Descripción</div><div>Categoría</div><div className="r">Monto</div>
+        </div>
+        {isLoading ? (
+          <p className="mono" style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--text-3)", padding: 24 }}><Loader2 className="animate-spin" size={16} /> Cargando…</p>
+        ) : (
+          <>
+            {filtered.map((tx, i) => (
+              <div key={tx.id} className="tbl-row" style={{ display: "grid", gridTemplateColumns: "60px 110px 1fr 200px 140px", gap: 14, background: tx.is_duplicate ? "rgba(230,184,92,0.04)" : undefined }}>
+                <div className="mono" style={{ fontSize: 11, color: "var(--text-4)" }}>{String(i + 1).padStart(3, "0")}</div>
+                <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{tx.date}</div>
+                <div style={{ fontSize: 13, color: "var(--text)", display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tx.description}</span>
+                  {tx.is_internal_transfer ? <span className="mono" style={{ fontSize: 10, color: "var(--blue)", background: "rgba(122,176,255,0.1)", padding: "1px 6px", borderRadius: 99 }}>interna</span> : null}
+                  {tx.is_duplicate ? <span className="mono" style={{ fontSize: 10, color: "var(--gold)", background: "rgba(230,184,92,0.1)", padding: "1px 6px", borderRadius: 99 }}>duplicado</span> : null}
+                </div>
+                <div>
+                  <span className={`chip${tx.category ? "" : " empty"}`}><span className="sw" />{tx.category?.name ?? "Sin asignar"}</span>
+                </div>
+                <div className="mono r" style={{ fontSize: 14, fontWeight: 500, color: tx.movement_type === "income" ? "var(--acc)" : "var(--text)" }}>
+                  {tx.movement_type === "income" ? "+" : "−"}{fmt(tx.amount, tx.currency).replace(/[^\d.,-]/g, "")}
+                </div>
+              </div>
+            ))}
+            {filtered.length === 0 ? (
+              <EmptyState title="Sin movimientos" description="No hay movimientos para el filtro actual." />
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "60px 110px 1fr 200px 140px", gap: 14, padding: "11px 16px", borderTop: "1px solid var(--line)", background: "var(--bg)" }}>
+                <div /><div /><div /><div className="mono r" style={{ fontSize: 11, color: "var(--text-3)" }}>Neto filtrado</div>
+                <div className="mono r" style={{ fontSize: 14, fontWeight: 500, color: filteredSum >= 0 ? "var(--acc)" : "var(--rust)" }}>{filteredSum >= 0 ? "+" : "−"}{fmt(String(Math.abs(filteredSum))).replace(/[^\d.,-]/g, "")}</div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }

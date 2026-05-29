@@ -1,22 +1,28 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, IBM_Plex_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { QueryProvider } from "@/lib/query-client";
 import "@/styles/globals.css";
 
+// Sistema de diseño "Bóveda": Geist Sans (UI), Geist Mono (números/metadata),
+// Instrument Serif italic (acentos editoriales). Una sola dirección oscura premium.
 const geistSans = Geist({
   variable: "--font-geist-sans",
+  weight: ["300", "400", "500", "600", "700"],
   subsets: ["latin"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  weight: ["300", "400", "500", "600"],
   subsets: ["latin"],
+  display: "swap",
 });
 
-// Fuente del look "terminal Bloomberg" (sistema de diseño Boveda).
-const plexMono = IBM_Plex_Mono({
-  variable: "--font-plex-mono",
-  weight: ["400", "500", "600", "700"],
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument-serif",
+  weight: ["400"],
+  style: ["normal", "italic"],
   subsets: ["latin"],
   display: "swap",
 });
@@ -33,7 +39,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" className="dark" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} ${plexMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased`}>
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>

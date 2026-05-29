@@ -1,7 +1,7 @@
 // Navegación del shell Boveda. Una sola fuente de verdad usada por la barra
 // lateral y por el command palette (⌘K). Solo rutas que existen en la v2.
 
-export type BovedaNavItem = { href: string; label: string };
+export type BovedaNavItem = { href: string; label: string; alert?: boolean };
 export type BovedaNavGroup = { section: string; items: BovedaNavItem[] };
 
 export const BOVEDA_NAV: BovedaNavGroup[] = [
@@ -9,8 +9,8 @@ export const BOVEDA_NAV: BovedaNavGroup[] = [
     section: "Resumen",
     items: [
       { href: "/dashboard", label: "Tablero" },
-      { href: "/patrimonio", label: "Patrimonio" },
       { href: "/comparar", label: "Comparar" },
+      { href: "/patrimonio", label: "Patrimonio" },
     ],
   },
   {
@@ -18,7 +18,7 @@ export const BOVEDA_NAV: BovedaNavGroup[] = [
     items: [
       { href: "/transactions", label: "Movimientos" },
       { href: "/statements", label: "Cartolas" },
-      { href: "/review", label: "Por revisar" },
+      { href: "/review", label: "Por revisar", alert: true },
     ],
   },
   {
@@ -26,7 +26,7 @@ export const BOVEDA_NAV: BovedaNavGroup[] = [
     items: [
       { href: "/presupuestos", label: "Presupuestos" },
       { href: "/goals", label: "Metas" },
-      { href: "/recurring", label: "Recurrentes" },
+      { href: "/recurring", label: "Suscripciones" },
     ],
   },
   {

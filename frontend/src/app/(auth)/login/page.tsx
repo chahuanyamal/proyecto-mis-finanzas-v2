@@ -33,14 +33,16 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-surface-950 px-6 py-12">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-lg border border-slate-800 bg-surface-900/80 p-8 shadow-2xl"
-      >
-        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-brand-400">Mis Finanzas V2</p>
-        <h1 className="mt-3 text-3xl font-bold text-slate-50">Ingresar</h1>
-        <p className="mt-2 text-sm text-slate-400">Usa el admin inicial para validar la nueva autenticación.</p>
+    <main className="flex min-h-screen items-center justify-center px-6 py-12" style={{ background: "var(--bg)" }}>
+      <form onSubmit={handleSubmit} className="panel w-full max-w-md">
+        <div className="mb-6 flex items-center gap-3">
+          <span className="brand-mark">M</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-[color:var(--text-3)]">Mis Finanzas</span>
+        </div>
+        <h1 className="text-3xl">
+          Ingresar <span className="serif" style={{ color: "var(--acc)" }}>·</span>
+        </h1>
+        <p className="mt-2 text-sm text-[color:var(--text-3)]">Accede a tu bóveda financiera.</p>
 
         <label className="mt-8 block text-sm font-medium text-slate-200">
           Email
