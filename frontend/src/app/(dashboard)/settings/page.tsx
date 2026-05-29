@@ -1,6 +1,6 @@
 "use client";
 
-import { settingsApi } from "@/lib/api";
+import { authApi, settingsApi } from "@/lib/api";
 import type { Settings } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { useRouter } from "next/navigation";
@@ -41,6 +41,12 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [tab, setTab] = useState<TabKey>("perfil");
+  const [pwForm, setPwForm] = useState({ current: "", next: "", confirm: "" });
+  const [pwStatus, setPwStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [backupMsg, setBackupMsg] = useState("");
+  const [importMsg, setImportMsg] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
 
   // Local-only UI state (template parity for sections without backend)
   const [sections, setSections] = useState({ resumen: true, movimientos: true, planificacion: true, taxonomia: true });
@@ -233,60 +239,86 @@ export default function SettingsPage() {
 
       {/* ───────── PERFIL ───────── */}
       {tab === "perfil" ? (
-        <form onSubmit={save}>
-          <div className="section">
-            <div className="section-head">
-              <div className="mark green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="8" r="4" /><path d="M4 21c1-4 5-6 8-6s7 2 8 6" /></svg></div>
-              <h2>Perfil</h2>
-              <span className="sub">datos personales · zona horaria · rol</span>
+        <>
+          <form onSubmit={save}>
+            <div className="section">
+              <div className="section-head">
+                <div className="mark green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="8" r="4" /><path d="M4 21c1-4 5-6 8-6s7 2 8 6" /></svg></div>
+                <h2>Perfil</h2>
+                <span className="sub">datos personales · zona horaria · rol</span>
+              </div>
+              <div className="form-grid">
+                <div className="field">
+                  <label>Nombre completo</label>
+                  <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+                </div>
+                <div className="field">
+                  <label>Email</label>
+                  <input className="input" value={email} disabled />
+                </div>
+                <div className="field">
+                  <label>Zona horaria</label>
+                  <select className="input"><option>America/Santiago (UTC−4)</option><option>America/Buenos Aires</option><option>UTC</option></select>
+                </div>
+                <div className="field">
+                  <label>Rol</label>
+                  <input className="input" value="admin" disabled />
+                </div>
+              </div>
+              <div style={{ textAlign: "right", marginTop: 6 }}>
+                <button type="submit" className="btn primary">Guardar cambios</button>
+              </div>
             </div>
-            <div className="form-grid">
-              <div className="field">
-                <label>Nombre completo</label>
-                <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-              </div>
-              <div className="field">
-                <label>Email</label>
-                <input className="input" value={email} disabled />
-              </div>
-              <div className="field">
-                <label>Zona horaria</label>
-                <select className="input"><option>America/Santiago (UTC−4)</option><option>America/Buenos Aires</option><option>UTC</option></select>
-              </div>
-              <div className="field">
-                <label>Rol</label>
-                <input className="input" value="admin" disabled />
-              </div>
-            </div>
-            <div style={{ textAlign: "right", marginTop: 6 }}>
-              <button type="submit" className="btn primary">Guardar cambios</button>
-            </div>
-          </div>
+          </form>
 
           <div className="section">
             <div className="section-head">
               <div className="mark gold"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="16" r="1" /><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 1 1 8 0v4" /></svg></div>
               <h2>Cambiar contraseña</h2>
-              <span className="sub">última rotación · hace 47 días</span>
+              <span className="sub">min. 8 caracteres · 1 mayúscula · 1 número · 1 especial</span>
             </div>
+            {pwStatus ? (
+              <div className={`insight ${pwStatus.type === "success" ? "ok" : "err"}`} style={{ marginBottom: 14 }}>
+                <div className="insight-mark">{pwStatus.type === "success" ? "OK" : "!"}</div>
+                <div className="insight-body"><div className="txt">{pwStatus.msg}</div></div>
+                <div />
+              </div>
+            ) : null}
             <div className="form-grid full">
               <div className="field">
                 <label>Contraseña actual</label>
-                <input className="input" type="password" defaultValue="••••••••" />
+                <input className="input" type="password" value={pwForm.current} onChange={(e) => setPwForm({ ...pwForm, current: e.target.value })} />
               </div>
             </div>
             <div className="form-grid">
               <div className="field">
                 <label>Nueva contraseña</label>
-                <input className="input" type="password" defaultValue="••••••••" />
+                <input className="input" type="password" value={pwForm.next} onChange={(e) => setPwForm({ ...pwForm, next: e.target.value })} />
               </div>
               <div className="field">
                 <label>Confirmar</label>
-                <input className="input" type="password" defaultValue="••••••••" />
+                <input className="input" type="password" value={pwForm.confirm} onChange={(e) => setPwForm({ ...pwForm, confirm: e.target.value })} />
               </div>
             </div>
-            <div style={{ textAlign: "right", marginTop: 6 }}>
-              <button type="button" className="btn primary">Actualizar contraseña</button>
+            <div style={{ textAlign: "right", marginTop: 14 }}>
+              <button type="button" className="btn primary" disabled={pwLoading} onClick={async () => {
+                setPwStatus(null);
+                if (pwForm.next !== pwForm.confirm) { setPwStatus({ type: "error", msg: "Las contraseñas no coinciden" }); return; }
+                if (pwForm.next.length < 8 || !/[A-Z]/.test(pwForm.next) || !/[0-9]/.test(pwForm.next) || !/[^A-Za-z0-9]/.test(pwForm.next)) {
+                  setPwStatus({ type: "error", msg: "Debe tener 8+ caracteres, 1 mayúscula, 1 número, 1 especial" }); return;
+                }
+                setPwLoading(true);
+                try {
+                  await authApi.changePassword(pwForm.current, pwForm.next);
+                  setPwStatus({ type: "success", msg: "Contraseña actualizada" });
+                  setPwForm({ current: "", next: "", confirm: "" });
+                } catch (err: unknown) {
+                  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+                  setPwStatus({ type: "error", msg: detail ?? "Error al cambiar contraseña" });
+                } finally { setPwLoading(false); }
+              }}>
+                {pwLoading ? "Cambiando…" : "Actualizar contraseña"}
+              </button>
             </div>
           </div>
 
@@ -294,51 +326,18 @@ export default function SettingsPage() {
             <div className="section-head">
               <div className="mark violet"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8" /><path d="M12 16v4" /></svg></div>
               <h2>Sesiones activas</h2>
-              <span className="sub">11 sesiones · última: hace 2 min</span>
-              <button type="button" className="btn ghost" style={{ fontSize: 11 }}>Cerrar todas las demás</button>
+              <span className="sub">sesión actual · este dispositivo</span>
             </div>
             <div className="session">
               <div className="mark cur"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M12 16v4" /></svg></div>
               <div className="info">
-                <div className="ttl">MacBook Pro · Safari 17 <span className="badge">SESIÓN ACTUAL</span></div>
-                <div className="meta">127.0.0.1 · Santiago, CL · activa 12:14 P.M.</div>
+                <div className="ttl">Este dispositivo <span className="badge">SESIÓN ACTUAL</span></div>
+                <div className="meta">{email}</div>
               </div>
               <div></div>
             </div>
-            <div className="session">
-              <div className="mark"><svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2" /><circle cx="12" cy="18" r="1" /></svg></div>
-              <div className="info">
-                <div className="ttl">iPhone 15 · Safari Móvil</div>
-                <div className="meta">10.0.4.21 · Santiago, CL · última 23 may 8:49 P.M.</div>
-              </div>
-              <button type="button" className="iconbtn"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M6 18L18 6" /></svg></button>
-            </div>
-            <div className="session">
-              <div className="mark"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2" /></svg></div>
-              <div className="info">
-                <div className="ttl">MacBook Pro · Chrome 120</div>
-                <div className="meta">127.0.0.1 · Santiago, CL · última 23 may 8:48 P.M.</div>
-              </div>
-              <button type="button" className="iconbtn"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M6 18L18 6" /></svg></button>
-            </div>
-            <div className="session">
-              <div className="mark"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2" /></svg></div>
-              <div className="info">
-                <div className="ttl">Linux · Firefox</div>
-                <div className="meta">192.168.1.105 · Casa · última 23 may 8:47 P.M.</div>
-              </div>
-              <button type="button" className="iconbtn"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M6 18L18 6" /></svg></button>
-            </div>
-            <div className="session">
-              <div className="mark"><svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2" /><circle cx="12" cy="18" r="1" /></svg></div>
-              <div className="info">
-                <div className="ttl">iPhone 15 · App nativa</div>
-                <div className="meta">10.0.4.21 · Santiago, CL · última 23 may 8:32 P.M.</div>
-              </div>
-              <button type="button" className="iconbtn"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M6 18L18 6" /></svg></button>
-            </div>
           </div>
-        </form>
+        </>
       ) : null}
 
       {/* ───────── PERSONALIZACIÓN ───────── */}
@@ -534,7 +533,18 @@ export default function SettingsPage() {
               <h4>Respaldo ZIP completo</h4>
               <p>Exporta TODAS tus cuentas, movimientos, categorías, reglas y configuración en un archivo ZIP. Ideal antes de migrar o como copia de seguridad. <strong style={{ color: "var(--text-2)" }}>617 movs + 38 cartolas + 24 categorías</strong></p>
             </div>
-            <button type="button" className="btn primary lg">↓ Descargar respaldo</button>
+            <button type="button" className="btn primary lg" onClick={async () => {
+              try {
+                const r = await settingsApi.backup();
+                const url = URL.createObjectURL(r.data as Blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `finanzas-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+                a.click();
+                URL.revokeObjectURL(url);
+                setBackupMsg("Respaldo descargado");
+              } catch { setBackupMsg("Error al generar respaldo"); }
+            }}>↓ Descargar respaldo</button>
           </div>
           <div className="bk-card">
             <div className="bk-icon gold"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg></div>
@@ -542,7 +552,24 @@ export default function SettingsPage() {
               <h4>Importar datos</h4>
               <p>Cargá un archivo ZIP de respaldo generado por esta aplicación. Solo se agregan datos nuevos, no se sobrescribe nada.</p>
             </div>
-            <button type="button" className="btn ghost lg">Seleccionar ZIP</button>
+            <label className="btn ghost lg" style={{ cursor: "pointer" }}>
+              {importLoading ? "Importando…" : "Seleccionar ZIP"}
+              <input
+                type="file" accept=".zip" hidden disabled={importLoading}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setImportLoading(true);
+                  setImportMsg("");
+                  try {
+                    const r = await settingsApi.backupImport(file);
+                    setImportMsg(`Importados: ${Object.entries(r.data.imported).map(([k, v]) => `${k}:${v}`).join(", ")}`);
+                  } catch {
+                    setImportMsg("Error al importar respaldo");
+                  } finally { setImportLoading(false); }
+                }}
+              />
+            </label>
           </div>
           <div className="bk-card coming">
             <div className="bk-icon violet"><svg viewBox="0 0 24 24"><path d="M5 16a4 4 0 0 0 4 4h6a5 5 0 1 0-1-9.9A6 6 0 0 0 5 16z" /></svg></div>
@@ -552,6 +579,9 @@ export default function SettingsPage() {
             </div>
             <div />
           </div>
+          {backupMsg ? <p className="mono" style={{ marginTop: 4, fontSize: 11, color: "var(--acc)" }}>{backupMsg}</p> : null}
+          {importLoading ? <p className="mono" style={{ marginTop: 4, fontSize: 11, color: "var(--text-3)" }}>Importando…</p> : null}
+          {importMsg ? <p className="mono" style={{ marginTop: 4, fontSize: 11, color: "var(--acc)" }}>{importMsg}</p> : null}
         </div>
       ) : null}
 

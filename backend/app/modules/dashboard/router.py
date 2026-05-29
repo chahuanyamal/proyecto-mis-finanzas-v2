@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.models.account import Account
 from app.models.budget import Budget
 from app.models.category import Category
+from app.models.notification import Notification
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
@@ -158,6 +159,25 @@ async def monthly_dashboard(
             "percent": percent,
             "status": "exceeded" if percent >= 100 else "warning" if percent >= budget.alert_at_percent else "ok",
         })
+        if percent >= budget.alert_at_percent:
+            existing = await db.execute(
+                select(Notification.id).where(
+                    Notification.user_id == current_user.id,
+                    Notification.type == "budget_alert",
+                    func.coalesce(Notification.data["budget_id"].as_string(), "") == str(budget.id),
+                    Notification.created_at >= func.now() - datetime.timedelta(days=1),
+                )
+            )
+            if existing.scalar_one_or_none() is None:
+                db.add(Notification(
+                    user_id=current_user.id,
+                    type="budget_alert",
+                    title=f"Presupuesto de {category_name} al {percent}%",
+                    body=f"Has gastado ${spent} de ${budget.amount} en {category_name} ({percent}%).",
+                    data={"budget_id": str(budget.id), "month": month, "percent": percent},
+                ))
+
+    await db.flush()
 
     return {
         "month": month,

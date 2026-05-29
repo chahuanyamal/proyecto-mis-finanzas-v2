@@ -1,7 +1,7 @@
 "use client";
 
 import { patrimonioApi } from "@/lib/api";
-import type { NetWorth, PatrimonioAccountTrend, PatrimonioCompare, PatrimonioHistory } from "@/lib/api-types";
+import type { NetWorth, PatrimonioAccountTrend, PatrimonioCompare, PatrimonioHistory, PatrimonioProjection } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { usePeriodStore } from "@/stores/period";
 import { Loader2 } from "lucide-react";
@@ -61,6 +61,8 @@ export default function PatrimonioPage() {
   const [history, setHistory] = useState<PatrimonioHistory | null>(null);
   const [trend, setTrend] = useState<PatrimonioAccountTrend | null>(null);
   const [compare, setCompare] = useState<PatrimonioCompare | null>(null);
+  const [projection, setProjection] = useState<PatrimonioProjection | null>(null);
+  const [projMonths, setProjMonths] = useState(6);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -76,12 +78,14 @@ export default function PatrimonioPage() {
       patrimonioApi.history(12, currency),
       patrimonioApi.accountTrend(12, currency),
       patrimonioApi.compare(1, currency),
-    ]).then(([net, hist, accountTrend, cmp]) => {
+      patrimonioApi.projection(projMonths, 12, currency),
+    ]).then(([net, hist, accountTrend, cmp, proj]) => {
       if (cancelled) return;
       setData(net.data);
       setHistory(hist.data);
       setTrend(accountTrend.data);
       setCompare(cmp.data);
+      setProjection(proj.data);
     }).catch(() => {
       if (!cancelled) setError("No se pudo cargar el patrimonio.");
     }).finally(() => {
@@ -392,6 +396,94 @@ export default function PatrimonioPage() {
               </div>
             </div>
           </section>
+
+          {/* Projection */}
+          {projection?.available ? (
+            <section className="panel" style={{ marginBottom: 24 }}>
+              <div className="panel-head">
+                <h3>Proyección</h3>
+                <span className="meta">regresión lineal · {projMonths} meses</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 pb-3">
+                {[3, 6, 12].map((m) => (
+                  <button
+                    key={m}
+                    className={`btn ${projMonths === m ? "primary" : "ghost"}`}
+                    style={{ fontSize: 12, padding: "4px 14px" }}
+                    onClick={async () => {
+                      setProjMonths(m);
+                      const r = await patrimonioApi.projection(m, 12, currency);
+                      setProjection(r.data);
+                    }}
+                  >
+                    {m}m
+                  </button>
+                ))}
+              </div>
+              <div className="overflow-auto px-4 pb-4">
+                {(() => {
+                  const all = [...projection.history, ...projection.projection];
+                  const vals = all.map((p) => n(p.value));
+                  const max = Math.max(...vals, 1);
+                  const min = Math.min(...vals, 0);
+                  const span = max - min || 1;
+                  const top = 20, bottom = 180, left = 40, right = 1160;
+                  const stepX = all.length > 1 ? (right - left) / (all.length - 1) : 0;
+                  const xy = all.map((p, i) => {
+                    const x = left + i * stepX;
+                    const y = bottom - ((n(p.value) - min) / span) * (bottom - top);
+                    return { x, y, value: n(p.value), isProj: i >= projection.history.length, lower: "lower" in p ? n((p as { lower: string }).lower) : null, upper: "upper" in p ? n((p as { upper: string }).upper) : null, month: p.month };
+                  });
+
+                  const mainLine = xy.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(0)},${p.y.toFixed(0)}`).join(" ");
+                  const upperLine = xy.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(0)},${(bottom - ((p.upper ?? p.value) - min) / span * (bottom - top)).toFixed(0)}`).join(" ");
+                  const lowerLine = xy.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(0)},${(bottom - ((p.lower ?? p.value) - min) / span * (bottom - top)).toFixed(0)}`).join(" ");
+
+                  return (
+                    <svg style={{ width: "100%", height: 200, display: "block" }} viewBox={`0 0 1200 200`} preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="pg2" x1="0" x2="0" y1="0" y2="1">
+                          <stop offset="0" stopColor="#8B5CF6" stopOpacity="0.2" />
+                          <stop offset="1" stopColor="#8B5CF6" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      <g stroke="rgba(255,255,255,0.05)" strokeDasharray="2 4">
+                        <line x1="40" y1="30" x2="1200" y2="30" />
+                        <line x1="40" y1="80" x2="1200" y2="80" />
+                        <line x1="40" y1="130" x2="1200" y2="130" />
+                      </g>
+                      {lowerLine && upperLine ? (
+                        <>
+                          <path d={`${upperLine} L${xy[xy.length - 1].x.toFixed(0)},${bottom} L${xy[0].x.toFixed(0)},${bottom} Z`} fill="rgba(139,92,246,0.06)" />
+                          <path d={`${upperLine} L${[...xy].reverse().map((p) => `${p.x.toFixed(0)},${(bottom - ((p.lower ?? p.value) - min) / span * (bottom - top)).toFixed(0)}`).join(" ")} Z`} fill="rgba(139,92,246,0.08)" />
+                        </>
+                      ) : null}
+                      <path d={mainLine} fill="none" stroke="#8B5CF6" strokeWidth="2" />
+                      {xy[xy.length - 1] ? (
+                        <>
+                          <circle cx={xy[xy.length - 1].x} cy={xy[xy.length - 1].y} r="4" fill="#8B5CF6" />
+                          <circle cx={xy[xy.length - 1].x} cy={xy[xy.length - 1].y} r="9" fill="#8B5CF6" opacity="0.15" />
+                        </>
+                      ) : null}
+                      {xy.length > 0 && xy[0] ? (
+                        <circle cx={xy[0].x} cy={xy[0].y} r="3" fill="#5EE9B5" />
+                      ) : null}
+                      <g fill="#807A6E" fontFamily="Geist Mono" fontSize="10" textAnchor="middle">
+                        {xy.filter((_, i) => i % Math.max(1, Math.floor(xy.length / 8)) === 0).map((p) => (
+                          <text key={p.month} x={p.x} y="196">{monthShort(p.month)}</text>
+                        ))}
+                      </g>
+                    </svg>
+                  );
+                })()}
+              </div>
+              {projection.slope_per_month !== undefined ? (
+                <div className="mono px-4 pb-3 text-[11px] text-[color:var(--text-3)]">
+                  Tendencia: {projection.slope_per_month >= 0 ? "▲" : "▼"} {signed(projection.slope_per_month, currency ?? "CLP")} / mes
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {/* Account trend */}
           {(trend?.accounts.length ?? 0) > 0 ? (

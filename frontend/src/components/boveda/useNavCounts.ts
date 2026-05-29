@@ -3,6 +3,7 @@
 import {
   accountsApi,
   categoriesApi,
+  notificationsApi,
   recurringApi,
   rulesApi,
   statementsApi,
@@ -58,6 +59,13 @@ export function useNavCounts(enabled: boolean): NavCounts {
     staleTime: STALE,
     enabled,
   });
+  const notifs = useQuery({
+    queryKey: ["nav-count", "notifications"],
+    queryFn: async () => (await notificationsApi.count()).data,
+    staleTime: STALE,
+    enabled,
+  });
+
   const recurring = useQuery({
     queryKey: ["nav-count", "recurring"],
     queryFn: async () => (await recurringApi.list()).data.length,
@@ -74,5 +82,6 @@ export function useNavCounts(enabled: boolean): NavCounts {
     "/tags": tags.data,
     "/rules": rules.data,
     "/recurring": recurring.data,
+    "/notifications": notifs.data?.unread,
   };
 }

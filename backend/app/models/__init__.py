@@ -1,5 +1,6 @@
 from app.models.account import Account
 from app.models.audit import AuditEvent
+from app.models.notification import Notification
 from app.models.budget import Budget
 from app.models.category import Category
 from app.models.category_rule import CategoryRule
@@ -17,6 +18,7 @@ from app.models.user import User
 
 __all__ = [
     "User",
+    "Notification",
     "Institution",
     "Account",
     "AuditEvent",

@@ -440,6 +440,15 @@ export interface PatrimonioAccountTrend {
   }>;
 }
 
+export interface PatrimonioProjection {
+  available: boolean;
+  reason?: string;
+  currency: string | null;
+  slope_per_month?: number;
+  history: Array<{ month: string; value: string }>;
+  projection: Array<{ month: string; value: string; lower: string; upper: string }>;
+}
+
 export interface PatrimonioCompare {
   months_ago: number;
   from_month: string;
@@ -532,6 +541,45 @@ export interface ReconciliationAccount {
   transaction_count: number;
   reconciliation_basis: "account" | "statement";
   statement_count: number;
+}
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  data: Record<string, unknown> | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationCount {
+  total: number;
+  unread: number;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  is_admin: boolean;
+  preferences: Record<string, unknown> | null;
+}
+
+export interface AdminUserCreatePayload {
+  email: string;
+  password: string;
+  full_name: string;
+  is_active?: boolean;
+  is_admin?: boolean;
+}
+
+export interface AdminUserUpdatePayload {
+  full_name?: string;
+  is_active?: boolean;
+  is_admin?: boolean;
 }
 
 export interface ReconciliationSummary {

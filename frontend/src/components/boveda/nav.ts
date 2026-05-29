@@ -11,6 +11,7 @@ export const BOVEDA_NAV: BovedaNavGroup[] = [
       { href: "/dashboard", label: "Tablero" },
       { href: "/comparar", label: "Comparar" },
       { href: "/patrimonio", label: "Patrimonio" },
+      { href: "/notifications", label: "Notificaciones", alert: true },
     ],
   },
   {

@@ -1,251 +1,206 @@
-# Comparacion app anterior vs Proyecto Mis Finanzas V2
+# Comparación: App Anterior (`ref`) vs V2
 
-Este documento compara la app anterior `chahuanyamal/mis-finanzas-oficial` con la app nueva `chahuanyamal/proyecto-mis-finanzas-v2`.
+## Stack
 
-La comparacion se hizo usando como referencia local el proyecto anterior disponible en `../proyecto-mis-finanzas-ref` y el proyecto actual en este repositorio.
+| Capa | ref | v2 |
+|---|---|---|
+| Frontend | Next.js 15 + Radix UI + Tailwind css + framer-motion | Next.js 15 + Tailwind CSS + custom Bóveda |
+| Backend | FastAPI + Celery + Redis | FastAPI (sin workers) |
+| DB | PostgreSQL 16 + asyncpg | PostgreSQL 16 + asyncpg |
+| ORM | SQLAlchemy 2 async + SoftDelete | SQLAlchemy 2 async |
+| Migraciones | Alembic (UUIDs hash) | Alembic (000X secuencial) |
+| Auth | JWT + Redis (sesiones, blacklist, rate-limit) | JWT + tabla `revoked_tokens` (sin Redis) |
+| PDF | pdfplumber + pytesseract | pdfplumber + pytesseract |
+| ML | scikit-learn (TF-IDF + k-NN) | No |
+| Desktop | Tauri v2 | No |
+| Workers | Celery + Redis + redbeat | No |
+| Linting | Biome | ESLint + TypeScript strict |
+| CSS | Radix + tailwindcss-animate + clsx | Tailwind + clsx + tailwind-merge |
+| Charts | recharts | recharts |
 
-## Resumen ejecutivo
+## Features financieras
 
-La app anterior tenia una vision mas ambiciosa: mas pantallas, mas automatizacion, mas infraestructura, mas seguridad operacional y un diseno visual mas elaborado. Tambien tenia mas puntos de falla: workers, Redis, Celery, Tauri, ML local, integraciones cloud, Caddy, backup automatizado y mas servicios.
+| Feature | ref | v2 |
+|---|---|---|
+| Dashboard mensual | Sí | Sí |
+| Dashboard por período (MTD/30d/YTD/12m) | Sí | Sí |
+| Dashboard caching (Redis) | Sí | No (cada request recalcula) |
+| Proyección fin de mes (dashboard) | Sí (usa recurrencias) | No |
+| Tendencias mensuales | Sí | Sí |
+| Transacciones CRUD | Sí | Sí |
+| Export CSV/Excel | Sí | Sí |
+| Bulk categorizar/tags/eliminar | Sí | Sí |
+| Splits de transacción | Sí | Sí |
+| Tags en transacciones | Sí | Sí |
+| Cuentas CRUD | Sí | Sí |
+| Categorías CRUD (sistema + propias) | Sí | Sí |
+| Presupuestos mensuales | Sí | Sí |
+| Alertas de presupuesto | Worker `check_budgets` + modelo `BudgetAlert` | Lazy en dashboard + notificación |
+| Metas de ahorro | Sí | Sí |
+| Aportes a metas | Sí | Sí |
+| Gastos recurrentes | Sí | Sí |
+| Detección automática de recurrentes | Sí | Sí |
+| Próximos pagos (upcoming) | Sí | Sí |
+| Cartolas PDF (upload + preview + confirm) | Sí | Sí |
+| Parsers multi-banco | Sí (Itaú, BICE, Prex, TD, Schwab, Alpaca, Generic, Money, UglyCash) | Mismos parsers |
+| Revisión OCR | Sí (pytesseract) | Sí |
+| Calidad de cartola | Sí | Sí |
+| Rollback de importación | Sí | Sí |
+| Reprocesar cartola | Sí | Sí |
+| Detección duplicados | Sí | Sí |
+| Detección transferencias internas | Sí | Sí |
+| Patrimonio (net worth) | Sí | Sí |
+| Historia patrimonio | Sí (snapshots diarios) | Sí (agregación mensual) |
+| Tendencia por cuenta | Sí | Sí |
+| Comparar períodos | Sí | Sí |
+| Proyección patrimonial (regresión) | Sí | Sí |
+| Reconciliación bancaria | Sí | Sí |
+| Alertas reconciliación | Sí | Sí |
+| Reporte anual | Sí | Sí |
+| Búsqueda global | Sí (tsvector GIN) | Sí (LIKE) |
+| Reglas de categorización | Sí | Sí |
+| Auto-categorizar | Sí (reglas + ML + AI) | Sí (solo reglas) |
 
-La app nueva V2 es mas simple y recupera el nucleo importante: autenticacion, cuentas, cartolas PDF, transacciones, categorias, reglas, presupuestos, metas, recurrentes, patrimonio basico, dashboard mensual y exportacion. Es una base mas razonable para estabilizar primero y mejorar despues por etapas.
+## Features extras (ref tiene, v2 no)
 
-La recomendacion es no copiar la app anterior completa. Conviene rescatar ideas concretas de funcionalidad y diseno, pero implementarlas con la arquitectura simple de la V2.
+| Feature | ref | Por qué no en v2 |
+|---|---|---|
+| **Familias / cuentas compartidas** | Modelos `Family`, `FamilyMember`, `FamilyAccount` + módulo `families/` | Complejidad extra, no necesario para uso personal |
+| **Copia seguridad cloud** | Google Drive + Dropbox via OAuth + `cloud_tokens` encryptados | Dependencias externas, backup ZIP manual suficiente |
+| **Webhooks / WhatsApp** | `notifications/webhook.py` | No necesario |
+| **Notificaciones push** | Webhook + WebSocket | Solo in-app |
+| **WebSocket (preview progress)** | WS `/api/ws/preview/{id}` | No (polling implícito) |
+| **AI / LLM** | Ollama + OpenAI para categorizar y revisar cartolas | Dependencia externa, placeholder "Coming Soon" |
+| **ML scikit-learn** | TF-IDF + k-NN (`LearningCategorizer`) | Prohibido explícitamente |
+| **Anomaly detection** | Z-score por cuenta (`AnomalyDetection`) | No implementado |
+| **Sesiones activas** | Listar/revocar sesiones desde `/auth/sessions` | No implementado |
+| **Rate limiting** | `slowapi` en login, register, search, admin | No implementado |
+| **Account lockout** | Redis-based tras N intentos fallidos | No implementado |
+| **Prometheus metrics** | `/api/metrics` con token | No implementado |
+| **Sentry** | `sentry-sdk` para errores | No implementado |
+| **Soft delete** | `SoftDeleteMixin` en casi todos los modelos | No (borrado físico) |
+| **Full-text search** | Columna `search_vector` tsvector con índice GIN | `ILIKE` simple |
+| **ETag caching** | Categorías con ETag + `@cache` decorator | No implementado |
+| **IP tracking** | IP + User-Agent en audit y sesiones | No |
+| **Account groups** | `account_groups` para organizar cuentas | No |
+| **Exchange rates** | Tabla `exchange_rates` con tasas históricas | No (solo CLP/USD fijo) |
+| **Adjuntos** | `attachments` FK a transaction | No |
+| **System settings** | `system_settings` tabla key-value | No (settings en User.preferences) |
+| **Statement AI review** | `ai_review` JSONB + panel en preview | No |
+| **Budget rollover** | `rollover` field en Budget | No |
+| **Budget alert model** | `BudgetAlert` con tracking de notificados | Notificación directa en `Notification` |
+| **Email verification** | `email_verified` + flujo de verificación | No |
+| **Registro público** | `POST /register` (configurable) | Sí existe |
+| **CSP reports** | `/api/csp-report` | No |
+| **Tauri desktop** | `src-tauri/` con iOS/Android builds | No (prohibido) |
+| **Docker multi-stage** | `Dockerfile.backup`, `Dockerfile.caddy`, `Dockerfile.dev` | Solo Dockerfile simple |
 
-## Diferencias principales
+## Diferencias arquitectónicas clave
 
-| Area | App anterior | V2 nueva | Evaluacion |
-| --- | --- | --- | --- |
-| Arquitectura | Web + Tauri + Docker + Redis + Celery + worker + beat + Caddy | Web local con Next.js, FastAPI y Postgres | V2 es mas mantenible y menos fragil |
-| Backend | Muchos modulos, observabilidad, rate limit, Redis, jobs | Modulos principales sin workers | V2 sacrifica automatizacion por estabilidad |
-| Frontend | UI mas pulida, mas componentes, Radix, Sonner, Framer Motion | UI terminal/Bloomberg mas simple | V2 tiene identidad clara, pero menos acabado por pantalla |
-| PDF | Parsers, preview, AI review, rollback, quality stats | Parsers, preview, confirmacion, duplicados, reproceso | V2 cubre lo esencial, faltan herramientas avanzadas |
-| Dashboard | Resumen avanzado, tendencias, rangos, comparaciones | Dashboard mensual simple | Alta oportunidad de mejora |
-| Patrimonio | Historial, tendencia por cuenta, comparacion, proyeccion | Patrimonio basico | Alta oportunidad de mejora |
-| Seguridad | CSRF, rate limit, sesiones, admin, auditoria | Auth con cookies, refresh y revocacion | V2 es suficiente localmente, faltan controles avanzados |
-| Datos compartidos | Familias y cuentas compartidas | No incluido | No prioritario para app personal local |
-| IA/ML | ML local, Ollama/OpenAI compatible, AI review | Pantallas placeholder/simple segun V2 | No traer ML pesado; si se trae IA, hacerlo opcional |
-| Operacion | Backups, cloud providers, metrics, Sentry, Caddy | Docker simple | V2 es mas facil de levantar |
+### 1. Autenticación
+- **ref**: JWT access + refresh, sesiones en Redis con metadata (IP, user-agent), blacklist en Redis, rate-limit con slowapi
+- **v2**: JWT access + refresh, blacklist en tabla `revoked_tokens` (sin Redis), sin rate-limit, sin sesiones
 
-## Matriz de funcionalidades
+### 2. Background jobs
+- **ref**: Celery + Redis + redbeat para: backup automático, chequeo presupuestos, detección patrones, mantenimiento, refresh tasas
+- **v2**: Sin workers. Alertas de presupuesto se evalúan **lazy** al cargar el dashboard
 
-| Funcionalidad | App anterior | V2 nueva | Estado recomendado |
-| --- | --- | --- | --- |
-| Login/logout | Si | Si | Mantener V2 |
-| Refresh token | Si | Si | Mantener V2 |
-| Registro | Si | Si backend | Mantener si se usa localmente |
-| Cambio de password | Si | No detectado en V2 | Agregar despues |
-| Sesiones activas | Si | No | Opcional |
-| Admin usuarios | Si | Pantalla/admin basica o parcial | Rehacer simple si hace falta |
-| Cuentas | Si | Si | Mantener V2 |
-| Instituciones | Parcial | Si | Mantener V2 |
-| Categorias | Si | Si | Mantener V2 |
-| Tags | Si | Si | Mantener V2 |
-| Reglas | Si, mas expresivas | Si | Mejorar gradualmente |
-| Transacciones | Si | Si | Mantener V2 |
-| Filtros de transacciones | Si | Si | Revisar UX |
-| Edicion bulk | Si | Si | Mantener V2 |
-| Notas/flags | Si | Si | Mantener V2 |
-| Splits | Si | Si | Mantener V2 |
-| Export CSV | Si | Si | Mantener V2 |
-| Export Excel | Si | Si | Mantener V2 |
-| Importar PDF | Si | Si | Mantener V2 |
-| Preview de cartola | Si | Si | Mantener V2 |
-| Confirmar preview | Si | Si | Mantener V2 |
-| Editar filas de preview | Si | Si | Mantener V2 |
-| Detectar duplicados | Si | Si | Mantener V2 |
-| Listado de parsers disponibles | Si | No detectado en V2 | Agregar |
-| Seleccion manual de parser | Si | No detectado en V2 | Agregar si hay cartolas reales problematicas |
-| Export CSV de preview | Si | No | Agregar |
-| Rollback de cartola | Si | No | Agregar con cuidado |
-| Quality stats de parsers | Si | No | Opcional |
-| AI review de cartolas | Si | No/placeholder | Opcional, no prioritario |
-| Dashboard mensual | Si | Si | Mejorar V2 |
-| Rangos MTD/30d/YTD/12m | Si | No | Agregar |
-| Tendencias 12 meses | Si | Parcial via transacciones | Agregar al dashboard |
-| Comparacion periodo anterior | Si | No | Agregar |
-| Transacciones recientes en dashboard | Si | No | Agregar |
-| Presupuestos | Si | Si | Mantener V2 |
-| Alertas de presupuesto | Si | Parcial | Mejorar despues |
-| Metas | Si | Si | Mantener V2 |
-| Depositos a metas | Si | No detectado en V2 | Agregar despues |
-| Recurrentes | Si | Si | Mantener V2 |
-| Deteccion automatica de recurrentes | Si | No | Agregar sin ML pesado |
-| Proximos pagos recurrentes | Si | No | Agregar |
-| Patrimonio resumen | Si | Si | Mejorar V2 |
-| Patrimonio historial | Si | No | Agregar |
-| Tendencia por cuenta | Si | No | Agregar |
-| Comparacion patrimonial | Si | No | Agregar |
-| Proyeccion patrimonial | Si | No | Agregar simple |
-| Reconciliacion | Si | No | Agregar despues de cartolas estables |
-| Busqueda global | Si | No | Agregar pronto |
-| Auditoria | Si | No | Opcional localmente |
-| Notificaciones | Si | No | Opcional |
-| Reporte anual | Si | No | Agregar despues |
-| Familias/cuentas compartidas | Si | No | No prioritario |
-| Backups desde UI | Si | No | Opcional, mejor despues |
-| Cloud backup/providers | Si | No | No prioritario |
-| WebSocket progreso preview | Si | No | No necesario si parsing es rapido |
-| Tauri desktop | Si | No | No traer |
-| Celery/Redis/workers | Si | No | No traer por restriccion V1 |
-| ML scikit-learn | Si | No | No traer por restriccion V1 |
+### 3. Modelos
+- **ref**: 29 tablas, SoftDeleteMixin, TimestampMixin, search_vector en transacciones, raw_data JSONB
+- **v2**: 17 tablas, solo TimestampMixin, sin soft delete, sin tsvector, sin raw_data
 
-## Diseno y experiencia de usuario
+### 4. Frontend
+- **ref**: Radix UI (12 componentes), framer-motion, sonner toasts, recharts, shadcn-style, Tailwind animate
+- **v2**: Hand-rolled Bóveda design system, sin librerías UI externas, recharts, lucide-react, Tailwind + custom CSS
 
-### App anterior
+### 5. Caching
+- **ref**: Redis caching de dashboard con invalidación por versión
+- **v2**: Sin caching (cada request a DB)
 
-La app anterior tenia un sistema visual llamado `Boveda`, con foco en una experiencia premium oscura:
+### 6. Testing
+- **ref**: Vitest (unit) + Playwright (e2e), backend tests con factory-boy
+- **v2**: Vitest (5 tests frontend), 83 tests backend con pytest-asyncio, sin e2e
 
-- Fondo negro/near-black con acento mint.
-- Sidebar fijo con secciones claras.
-- Header por pantalla con breadcrumbs y controles contextuales.
-- Cards mas refinadas, bordes suaves y mayor jerarquia visual.
-- Dashboard con hero KPIs, tendencias, sparklines, categoria principal y actividad reciente.
-- Patrimonio dividido en componentes ricos: hero, evolucion, composicion, proyeccion, tabla de cuentas y alertas.
-- Componentes UI dedicados: dialogos, botones, inputs, empty states, confirm dialogs y toasts.
-- Mejor manejo visual de loading, error y empty states.
+### 7. Parsers
+- Ambos comparten los mismos parsers multi-banco (código prácticamente idéntico)
 
-Riesgo: el frontend anterior tambien arrastraba mas dependencias y mas complejidad visual, lo que aumenta costo de mantenimiento.
+## Resumen: qué ganas y qué pierdes con v2
 
-### V2 nueva
+### Ganas
+- ✅ Sin Redis (menos dependencias, menos memoria)
+- ✅ Sin Celery/workers (simplicidad operativa)
+- ✅ Sin Tauri (solo web)
+- ✅ Sin ML/scikit-learn (menos dependencias pesadas)
+- ✅ Código más simple y directo
+- ✅ TypeScript strict + ESLint (vs Biome en ref)
+- ✅ Docker más liviano
+- ✅ Backup ZIP manual funcional
+- ✅ Notificaciones + Admin usuarios (nuevo en v2)
 
-La V2 nueva tiene una identidad visual distinta, mas tipo terminal/Bloomberg:
+### Pierdes
+- ❌ Caching de dashboard (más lento en carga)
+- ❌ Rate limiting (sin protección contra brute force)
+- ❌ Account lockout
+- ❌ Cloud backup automático
+- ❌ Familias/cuentas compartidas
+- ❌ ML auto-categorization (solo reglas)
+- ❌ AI review de cartolas
+- ❌ Full-text search (solo ILIKE)
+- ❌ Soft delete (no puedes recuperar datos borrados)
+- ❌ Anomaly detection
+- ❌ Sesiones (no puedes ver/revocar sesiones activas)
+- ❌ WebSocket (previews sin progreso en tiempo real)
+- ❌ Exchange rates (solo CLP/USD fijo)
 
-- Fondo negro y navy.
-- Tipografia monoespaciada.
-- Acento naranja/amber.
-- Layout compacto y denso.
-- Sidebar agrupado por areas: resumen, movimientos, planificacion, taxonomia, analisis y sistema.
-- Command palette integrado.
-- Menos ornamento y menos componentes externos.
+## Tabla comparativa de dependencias
 
-Riesgo: algunas pantallas se sienten mas funcionales que terminadas. El dashboard y patrimonio pueden verse simples frente a la app anterior.
+### Python
 
-### Recomendacion visual
+| Dependencia | ref | v2 |
+|---|---|---|
+| fastapi | 0.136.1 | >=0.115.0 |
+| sqlalchemy[asyncio] | 2.0.50 | >=2.0.36 |
+| asyncpg | 0.31.0 | >=0.30.0 |
+| alembic | 1.18.4 | >=1.14.0 |
+| celery | 5.6.3 | — |
+| redis | 7.4.0 | — |
+| celery-redbeat | 2.3.3 | — |
+| scikit-learn | 1.8.0 | — |
+| numpy | 2.4.6 | — |
+| sentry-sdk | >=2.60.0 | — |
+| prometheus | sí | — |
+| slowapi | 0.1.9 | — |
+| cryptography | >=42.0.0 | — |
+| structlog | >=24.1.0 | — |
+| pytest | >=9.0.3 | >=8.3.0 |
+| factory-boy | 3.3.3 | — |
+| uv | — | Sí (package manager) |
+| **Total** | **~30** | **~16** |
 
-No conviene mezclar ambos estilos completos. La V2 ya tiene una direccion clara. Conviene mantener el estilo terminal/Bloomberg y rescatar de la app anterior solo patrones de UX:
+### Node.js
 
-- Header consistente por pantalla.
-- KPIs con comparacion contra periodo anterior.
-- Estados de carga/error/vacio bien disenados.
-- Componentes de tabla mas claros.
-- Acciones principales visibles.
-- Controles de rango y moneda persistentes.
-- Dashboard con jerarquia visual mas fuerte.
+| Dependencia | ref | v2 |
+|---|---|---|
+| radix-ui/* | 12 paquetes | — |
+| framer-motion | 12.40.0 | — |
+| sonner | 2.0.7 | — |
+| @tauri-apps/api | ^2.0.0 | — |
+| react-dropzone | 14.2.3 | — |
+| pdfjs-dist | 5.4.149 | — |
+| @tanstack/react-virtual | 3.10.8 | — |
+| recharts | 3.8.1 | 2.13.3 |
+| tailwindcss-animate | 1.0.7 | — |
+| @biomejs/biome | 1.9.4 | — |
+| eslint | — | 9.x |
+| eslint-config-next | — | Sí |
+| zustand | 5.0.13 | 5.0.1 |
+| @tanstack/react-query | 5.100.11 | ^5.59.0 |
+| **Total** | **~49** | **~24** |
 
-## Funcionalidades que no conviene traer completas
+## Conclusión
 
-Estas partes explican parte de la complejidad de la app anterior y no deberian copiarse tal cual:
+La V2 es una **versión minimalista y deliberadamente limitada** del sistema original. Sacrifica features avanzadas (ML, workers, cloud, caché, familias, rate-limiting, sesiones, soft-delete) a cambio de **simplicidad operativa, menos dependencias, y facilidad de despliegue** (sin Redis, sin Celery, sin Tauri).
 
-- Tauri o desktop wrapper.
-- Celery, Redis, worker y beat.
-- scikit-learn o entrenamiento ML local.
-- Caddy y TLS automatico como requisito base.
-- Backup service separado.
-- Integraciones cloud complejas.
-- WebSocket para todo si no hay necesidad real.
-- Observabilidad pesada para una app local.
+Ambas apps cubren el **core funcional financiero**: importar cartolas, categorizar, dashboard, presupuestos, metas, patrimonio, reconciliación, recurrencias, splits, tags, búsqueda y reportes. La V2 agrega notificaciones in-app y admin de usuarios que ref no tenía como endpoints standalone.
 
-Si alguna de estas se necesita mas adelante, deberia entrar como etapa aislada y justificada.
-
-## Prioridades recomendadas
-
-### Prioridad 1: valor alto, riesgo bajo
-
-1. Mejorar dashboard con rangos, tendencias, comparacion y recientes.
-2. Agregar busqueda global simple.
-3. Mejorar `/review` para categorizar movimientos pendientes y crear reglas sugeridas.
-4. Agregar listado de parsers disponibles y seleccion manual al importar cartola.
-5. Mejorar estados visuales de loading/error/empty en pantallas principales.
-
-### Prioridad 2: valor alto, riesgo medio
-
-1. Expandir patrimonio con historial, tendencia por cuenta y comparacion.
-2. Agregar rollback de cartolas confirmadas.
-3. Agregar export CSV de preview.
-4. Agregar deteccion simple de recurrentes.
-5. Agregar proximos pagos recurrentes.
-
-### Prioridad 3: valor medio o uso especifico
-
-1. Reporte anual.
-2. Cambio de password y sesiones activas.
-3. Auditoria local de cambios relevantes.
-4. Backup manual desde UI.
-5. Depositos/contribuciones a metas.
-
-### No prioritario
-
-1. Familias/cuentas compartidas.
-2. Cloud backup/providers.
-3. IA avanzada.
-4. ML local.
-5. Workers separados.
-6. Tauri.
-
-## Roadmap propuesto
-
-### Etapa 1: dashboard util y confiable
-
-Objetivo: que la pantalla principal vuelva a sentirse potente sin cambiar la arquitectura.
-
-Cambios sugeridos:
-
-- Endpoint `GET /v1/dashboard/summary` con rango `date_from`, `date_to` y `currency`.
-- Endpoint `GET /v1/dashboard/trends` para 12 meses.
-- Cards: ingresos, gastos, ahorro neto y tasa de ahorro.
-- Comparacion contra periodo anterior.
-- Top categorias.
-- Ultimas transacciones.
-- Selector de rango: este mes, ultimos 30 dias, ano a la fecha, 12 meses.
-
-### Etapa 2: revision y reglas
-
-Objetivo: acelerar la limpieza de movimientos sin categoria.
-
-Cambios sugeridos:
-
-- Pantalla `/review` con resumen de movimientos pendientes.
-- Accion para asignar categoria rapido.
-- Creacion de regla basada en descripcion/comercio.
-- Boton para aplicar reglas pendientes.
-
-### Etapa 3: patrimonio avanzado simple
-
-Objetivo: recuperar lo mejor de la app anterior sin sobrecargar.
-
-Cambios sugeridos:
-
-- Historial mensual de patrimonio.
-- Tendencia por cuenta.
-- Comparacion contra N meses atras.
-- Proyeccion lineal simple basada en historial.
-
-### Etapa 4: cartolas mas controlables
-
-Objetivo: que importar PDFs sea diagnosticable y reversible.
-
-Cambios sugeridos:
-
-- Listar parsers soportados.
-- Permitir parser manual opcional.
-- Exportar preview a CSV.
-- Rollback de cartola confirmada.
-- Mostrar estadisticas basicas de parseo.
-
-### Etapa 5: mejoras operativas locales
-
-Objetivo: mejorar seguridad y mantenimiento sin meter infraestructura pesada.
-
-Cambios sugeridos:
-
-- Cambio de password.
-- Sesiones activas.
-- Backup manual desde UI o comando documentado.
-- Auditoria local acotada.
-
-## Conclusion
-
-La app anterior sirve como catalogo de ideas, no como base para copiar. La V2 nueva deberia mantenerse simple y estable, incorporando solo las funcionalidades que aportan valor directo.
-
-El mejor primer paso es mejorar el dashboard, porque concentra la percepcion de calidad de la app y reutiliza datos que ya existen: transacciones, categorias, cuentas y presupuestos.
+Para un usuario individual que no necesita ML, cloud backup, ni familias compartidas, la V2 es más liviana y fácil de mantener. Para un power user o familia, ref es más completa.

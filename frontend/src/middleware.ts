@@ -9,6 +9,13 @@ function isProtected(pathname: string): boolean {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // API rewrite: proxy /api/* requests to backend at runtime
+  if (pathname.startsWith("/api/")) {
+    const backendUrl = process.env.INTERNAL_API_URL || "http://backend:8000";
+    const url = new URL(pathname + request.nextUrl.search, backendUrl);
+    return NextResponse.rewrite(url);
+  }
+
   if (!isProtected(pathname)) {
     return NextResponse.next();
   }

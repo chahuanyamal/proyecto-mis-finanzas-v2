@@ -36,3 +36,4 @@ class User(Base, TimestampMixin):
     recurring_expenses = relationship("RecurringExpense", back_populates="user")
     tags = relationship("Tag", back_populates="user")
     audit_events = relationship("AuditEvent", back_populates="user")
+    notifications = relationship("Notification", back_populates="user", order_by="Notification.created_at.desc()")
