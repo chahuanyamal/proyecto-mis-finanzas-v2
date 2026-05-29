@@ -2,11 +2,28 @@
 
 import { categoriesApi, rulesApi } from "@/lib/api";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import type { Category, CategoryRule, CategoryRulePayload } from "@/lib/api-types";
+import type {
+  Category,
+  CategoryRule,
+  CategoryRulePayload,
+  RuleApplyResult,
+  RulePreviewResult,
+} from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+
+const clpFormat = new Intl.NumberFormat("es-CL", {
+  style: "currency",
+  currency: "CLP",
+  maximumFractionDigits: 0,
+});
+
+function formatAmount(value: string): string {
+  const num = Number(value);
+  return Number.isFinite(num) ? clpFormat.format(num) : value;
+}
 
 const emptyForm: CategoryRulePayload = {
   target_category_id: "",
@@ -45,6 +62,11 @@ export default function RulesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [preview, setPreview] = useState<RulePreviewResult | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewSeq = useRef(0);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [applyResult, setApplyResult] = useState<{ id: string; result: RuleApplyResult } | null>(null);
 
   useEffect(() => {
     if (!hasVerified) void fetchMe();
@@ -69,6 +91,51 @@ export default function RulesPage() {
   useEffect(() => {
     if (user) void loadData();
   }, [user]);
+
+  // Live preview with debounce; ignore stale responses.
+  useEffect(() => {
+    const pattern = form.pattern.trim();
+    if (!pattern) {
+      setPreview(null);
+      setPreviewLoading(false);
+      return;
+    }
+    setPreviewLoading(true);
+    const seq = ++previewSeq.current;
+    const timer = window.setTimeout(async () => {
+      try {
+        const { data } = await rulesApi.preview({
+          field: form.field,
+          operator: form.operator,
+          pattern,
+        });
+        if (seq === previewSeq.current) {
+          setPreview(data);
+          setPreviewLoading(false);
+        }
+      } catch {
+        if (seq === previewSeq.current) {
+          setPreview(null);
+          setPreviewLoading(false);
+        }
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [form.field, form.operator, form.pattern]);
+
+  async function applyRule(id: string) {
+    setApplyingId(id);
+    setApplyResult(null);
+    try {
+      const { data } = await rulesApi.apply(id);
+      setApplyResult({ id, result: data });
+      await loadData();
+    } catch {
+      setError("No se pudo aplicar la regla a los históricos.");
+    } finally {
+      setApplyingId(null);
+    }
+  }
 
   function reset() {
     setForm(emptyForm);
@@ -283,12 +350,50 @@ export default function RulesPage() {
                 {targetCategory?.name ?? "destino"}
               </span>
             </span>
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto flex items-center gap-3">
+              {form.pattern.trim() ? (
+                previewLoading ? (
+                  <span className="flex items-center gap-1.5 font-mono text-[12px] text-[color:var(--text-3)]">
+                    <Loader2 className="animate-spin" size={13} /> contando…
+                  </span>
+                ) : preview ? (
+                  <span className="font-mono text-[12px]" style={{ color: "var(--acc)" }}>
+                    {preview.count} coincidencias
+                    <span className="text-[color:var(--text-3)]">
+                      {" "}
+                      · {preview.uncategorized} sin categoría
+                    </span>
+                  </span>
+                ) : null
+              ) : null}
               <button type="submit" className="btn primary">
                 {editingId ? "Guardar cambios" : "Guardar regla"}
               </button>
             </div>
           </div>
+
+          {form.pattern.trim() && preview && preview.samples.length > 0 ? (
+            <div className="mt-2.5 flex flex-col gap-1 rounded-[7px] border border-[color:var(--line-2)] bg-[color:var(--bg)] px-4 py-3">
+              <span className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--text-3)]">
+                Ejemplos
+              </span>
+              {preview.samples.slice(0, 3).map((sample) => (
+                <div
+                  key={sample.id}
+                  className="flex items-center justify-between gap-3 font-mono text-[12px] text-[color:var(--text-2)]"
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <span
+                      className="h-[5px] w-[5px] shrink-0 rounded-full"
+                      style={{ background: sample.has_category ? "var(--text-3)" : "var(--gold)" }}
+                    />
+                    <span className="truncate">{sample.description}</span>
+                  </span>
+                  <span className="shrink-0 text-[color:var(--text)]">{formatAmount(sample.amount)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </form>
       </div>
 
@@ -307,11 +412,12 @@ export default function RulesPage() {
         </div>
       ) : (
         <div className="tbl">
-          <div className="grid grid-cols-[90px_1fr_220px_110px_32px] gap-3.5 px-4 tbl-head">
+          <div className="grid grid-cols-[90px_1fr_220px_90px_160px_32px] gap-3.5 px-4 tbl-head">
             <div>Alcance</div>
             <div>Regla</div>
             <div>Destino</div>
             <div className="r">Prioridad</div>
+            <div />
             <div />
           </div>
           {rules.map((rule) => {
@@ -319,7 +425,7 @@ export default function RulesPage() {
             return (
               <div
                 key={rule.id}
-                className="grid cursor-pointer grid-cols-[90px_1fr_220px_110px_32px] items-center gap-3.5 border-b border-[color:var(--line-2)] px-4 py-3.5 last:border-0 hover:bg-[color:var(--bg-3)]"
+                className="grid cursor-pointer grid-cols-[90px_1fr_220px_90px_160px_32px] items-center gap-3.5 border-b border-[color:var(--line-2)] px-4 py-3.5 last:border-0 hover:bg-[color:var(--bg-3)]"
                 onClick={() => edit(rule)}
               >
                 <div>
@@ -362,6 +468,28 @@ export default function RulesPage() {
                   </span>
                 </div>
                 <div className="r font-mono text-[14px] font-medium text-[color:var(--text-2)]">{rule.priority}</div>
+                <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    style={{ padding: "4px 10px", fontSize: 11 }}
+                    disabled={applyingId === rule.id}
+                    onClick={() => void applyRule(rule.id)}
+                  >
+                    {applyingId === rule.id ? (
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 className="animate-spin" size={12} /> aplicando…
+                      </span>
+                    ) : (
+                      "Aplicar a históricos"
+                    )}
+                  </button>
+                  {applyResult && applyResult.id === rule.id ? (
+                    <span className="font-mono text-[10px]" style={{ color: "var(--acc)" }}>
+                      Actualizados {applyResult.result.updated} de {applyResult.result.matched}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
                   <ConfirmButton
                     title="Eliminar regla"

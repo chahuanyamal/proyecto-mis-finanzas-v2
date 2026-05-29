@@ -3,7 +3,7 @@
 import { useAuthStore } from "@/stores/auth";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { CommandPalette } from "./CommandPalette";
 import { BOVEDA_NAV, BOVEDA_NAV_FLAT, isActive, openCommandPalette } from "./nav";
 import { useNavCounts } from "./useNavCounts";
@@ -25,8 +25,14 @@ export function BovedaShell({ children }: { children: ReactNode }) {
   const currentGroup = BOVEDA_NAV.find((g) => g.items.some((i) => isActive(pathname, i.href)));
   const counts = useNavCounts(Boolean(user));
   const { period, currency, setPeriod, toggleCurrency } = usePeriodStore();
+  const [navOpen, setNavOpen] = useState(false);
   const fmtCount = (n: number | undefined) =>
     n === undefined ? null : n > 999 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
+
+  // Cierra el drawer móvil al navegar.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname]);
 
   async function handleLogout() {
     await logout();
@@ -35,7 +41,20 @@ export function BovedaShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="nav-aside sticky top-0 hidden h-screen flex-shrink-0 lg:flex">
+      {/* Backdrop del drawer móvil */}
+      {navOpen ? (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          aria-hidden
+          onClick={() => setNavOpen(false)}
+        />
+      ) : null}
+
+      <aside
+        className={`nav-aside fixed inset-y-0 left-0 z-50 h-screen flex-shrink-0 transform transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:translate-x-0 ${
+          navOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
+      >
         <div className="flex h-full w-full flex-col overflow-y-auto">
           <Link href="/dashboard" className="brand">
             <div className="brand-mark">M</div>
@@ -91,23 +110,34 @@ export function BovedaShell({ children }: { children: ReactNode }) {
 
       <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
         <header className="head">
+          <button
+            type="button"
+            className="btn ghost lg:hidden"
+            style={{ padding: "6px 9px" }}
+            aria-label="Abrir menú"
+            onClick={() => setNavOpen(true)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18M3 12h18M3 18h18" />
+            </svg>
+          </button>
           <div className="crumbs">
-            <span>finanzas</span>
+            <span className="hidden sm:inline">finanzas</span>
             {currentGroup ? (
               <>
-                <span className="sep">/</span>
-                <span>{currentGroup.section.toLowerCase()}</span>
+                <span className="sep hidden sm:inline">/</span>
+                <span className="hidden sm:inline">{currentGroup.section.toLowerCase()}</span>
               </>
             ) : null}
-            <span className="sep">/</span>
+            <span className="sep hidden sm:inline">/</span>
             <span className="here">{current?.label ?? "Tablero"}</span>
           </div>
           <div className="head-r">
-            <span className="pill">
+            <span className="pill hidden md:inline-flex">
               <span className="live" />
               Datos al día
             </span>
-            <div className="seg" aria-label="Período">
+            <div className="seg hidden sm:inline-flex" aria-label="Período">
               {PERIOD_OPTIONS.map((p) => (
                 <button
                   key={p.value}

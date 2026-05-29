@@ -1,7 +1,7 @@
 "use client";
 
 import { categoriesApi, recurringApi } from "@/lib/api";
-import type { Category, Recurring, RecurringPayload, UpcomingRecurring } from "@/lib/api-types";
+import type { Category, Recurring, RecurringDetectResult, RecurringPayload, UpcomingRecurring } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -14,7 +14,10 @@ const emptyForm: RecurringPayload = {
   movement_type: "expense", category_id: "", next_date: "", active: true,
 };
 
+type Candidate = RecurringDetectResult["items"][number];
+
 function asNumber(value: string | null | undefined): number { return Number(value ?? 0); }
+function normName(value: string): string { return value.trim().toLowerCase().replace(/\s+/g, " "); }
 function fmt(value: number): string { return new Intl.NumberFormat("es-CL").format(Math.round(value)); }
 function shortDate(iso: string): string {
   const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
@@ -44,6 +47,8 @@ export default function RecurringPage() {
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [addingCandidate, setAddingCandidate] = useState<string | null>(null);
 
   useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
   useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/recurring"); }, [hasVerified, router, user]);
@@ -54,7 +59,11 @@ export default function RecurringPage() {
       setItems(r.data); setCategories(c.data); setUpcoming(u.data);
     } catch { setError("No se pudieron cargar los recurrentes."); }
   }
-  useEffect(() => { if (user) void load(); }, [user]);
+  async function loadCandidates() {
+    try { const res = await recurringApi.candidates(); setCandidates(res.data.items); }
+    catch { /* el banner es opcional; ignoramos errores de candidatos */ }
+  }
+  useEffect(() => { if (user) { void load(); void loadCandidates(); } }, [user]);
 
   function reset() { setForm(emptyForm); setEditingId(null); setShowForm(false); }
   function startCreate() { setForm(emptyForm); setEditingId(null); setShowForm(true); }
@@ -86,9 +95,21 @@ export default function RecurringPage() {
     try {
       const res = await recurringApi.detect();
       setInfo(`Detección completa: ${res.data.created} recurrente(s) creado(s) de ${res.data.detected} detectado(s).`);
-      await load();
+      await Promise.all([load(), loadCandidates()]);
     } catch { setError("No se pudo detectar recurrentes."); }
     finally { setBusy(false); }
+  }
+  async function addCandidate(c: Candidate) {
+    const key = `${normName(c.name)}|${c.amount}|${c.frequency}`;
+    setAddingCandidate(key); setError("");
+    try {
+      await recurringApi.create({
+        name: c.name, amount: c.amount, currency: c.currency, frequency: c.frequency,
+        movement_type: c.movement_type, next_date: c.next_date, active: true,
+      });
+      await Promise.all([load(), loadCandidates()]);
+    } catch { setError("No se pudo agregar el recurrente detectado."); }
+    finally { setAddingCandidate(null); }
   }
 
   // ── Derived data ──
@@ -97,6 +118,18 @@ export default function RecurringPage() {
   const monthlyTotal = expenses.reduce((s, i) => s + monthlyEquiv(asNumber(i.amount), i.frequency), 0);
   const annualTotal = expenses.reduce((s, i) => s + annual(asNumber(i.amount), i.frequency), 0);
   const nextUp = [...upcoming].sort((a, b) => a.days_until - b.days_until)[0];
+
+  // Candidatos detectados sin registrar: ocultar los que ya existen (nombre normalizado + monto aprox 2%)
+  const newCandidates = candidates.filter((c) => {
+    const cn = normName(c.name);
+    const ca = asNumber(c.amount);
+    return !items.some((it) => {
+      if (normName(it.name) !== cn) return false;
+      const ia = asNumber(it.amount);
+      const tol = Math.max(Math.abs(ia) * 0.02, 1);
+      return Math.abs(ia - ca) <= tol;
+    });
+  });
 
   // Calendar: current month, count charges per day from upcoming + next_date
   const today = new Date();
@@ -211,6 +244,42 @@ export default function RecurringPage() {
         <div className="insight ok" style={{ marginBottom: 20 }}>
           <div className="insight-mark serif">¶</div>
           <div className="insight-body"><div className="txt">{info}</div></div>
+          <span />
+        </div>
+      ) : null}
+
+      {newCandidates.length > 0 ? (
+        <div className="insight" style={{ marginBottom: 20, alignItems: "flex-start", borderColor: "rgba(230,184,92,0.3)" }}>
+          <div className="insight-mark" style={{ color: "var(--gold)" }}>¶</div>
+          <div className="insight-body" style={{ flex: 1 }}>
+            <div className="txt" style={{ marginBottom: 12 }}>
+              <strong>{newCandidates.length} patrón{newCandidates.length === 1 ? "" : "es"} detectado{newCandidates.length === 1 ? "" : "s"} sin registrar</strong>
+              <span className="mono" style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginLeft: 10 }}>Detectadas en tus movimientos · sin registrar</span>
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {newCandidates.slice(0, 4).map((c) => {
+                const key = `${normName(c.name)}|${c.amount}|${c.frequency}`;
+                const adding = addingCandidate === key;
+                return (
+                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "var(--bg-3)", borderRadius: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                    <span className="mono" style={{ fontSize: 13, color: c.movement_type === "income" ? "var(--acc)" : "var(--text)", fontWeight: 500 }}>
+                      <span style={{ fontSize: 10, color: "var(--text-3)", marginRight: 4 }}>{c.currency}</span>
+                      {c.movement_type === "income" ? "+" : ""}{fmt(asNumber(c.amount))}
+                    </span>
+                    <span className="chip mono" style={{ fontSize: 10 }}>{FREQ_LABELS[c.frequency] ?? c.frequency}</span>
+                    <span className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>{c.occurrences}× visto</span>
+                    <button className="btn primary" style={{ padding: "4px 12px", fontSize: 12 }} disabled={adding} onClick={() => void addCandidate(c)}>
+                      {adding ? "Agregando…" : "+ Agregar"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            {newCandidates.length > 4 ? (
+              <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>+{newCandidates.length - 4} más · usa “Detectar automático” para registrarlos todos</div>
+            ) : null}
+          </div>
           <span />
         </div>
       ) : null}

@@ -87,6 +87,25 @@ export interface AutoCategorizeResult {
   updated: number;
 }
 
+export interface RulePreviewSample {
+  id: string;
+  date: string;
+  description: string;
+  amount: string;
+  has_category: boolean;
+}
+
+export interface RulePreviewResult {
+  count: number;
+  uncategorized: number;
+  samples: RulePreviewSample[];
+}
+
+export interface RuleApplyResult {
+  matched: number;
+  updated: number;
+}
+
 export type SearchEntity = "transaction" | "account" | "category" | "tag" | "rule" | "statement";
 
 export interface SearchHit {

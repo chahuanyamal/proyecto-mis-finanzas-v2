@@ -40,6 +40,8 @@ import type {
   RecurringDetectResult,
   RecurringPayload,
   ReconciliationSummary,
+  RuleApplyResult,
+  RulePreviewResult,
   SearchResponse,
   Settings,
   SettingsPayload,
@@ -141,6 +143,12 @@ export const rulesApi = {
   create: (payload: CategoryRulePayload) => api.post<CategoryRule>("/v1/category-rules", payload),
   update: (id: string, payload: Partial<CategoryRulePayload>) => api.patch<CategoryRule>(`/v1/category-rules/${id}`, payload),
   remove: (id: string) => api.delete(`/v1/category-rules/${id}`),
+  preview: (payload: { field: string; operator: string; pattern: string }) =>
+    api.post<RulePreviewResult>("/v1/category-rules/preview", payload),
+  apply: (id: string, onlyUncategorized = true) =>
+    api.post<RuleApplyResult>(`/v1/category-rules/${id}/apply`, undefined, {
+      params: { only_uncategorized: onlyUncategorized },
+    }),
 };
 
 export const searchApi = {
@@ -205,6 +213,7 @@ export const goalsApi = {
 export const recurringApi = {
   list: () => api.get<Recurring[]>("/v1/recurring"),
   detect: () => api.post<RecurringDetectResult>("/v1/recurring/detect"),
+  candidates: () => api.get<RecurringDetectResult>("/v1/recurring/detect/candidates"),
   upcoming: (days = 45) => api.get<UpcomingRecurring[]>("/v1/recurring/upcoming", { params: { days } }),
   create: (payload: RecurringPayload) => api.post<Recurring>("/v1/recurring", payload),
   update: (id: string, payload: Partial<RecurringPayload>) => api.patch<Recurring>(`/v1/recurring/${id}`, payload),
