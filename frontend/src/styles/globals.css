@@ -1254,3 +1254,64 @@ th {
     background: var(--bg-3);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE · mobile-first overrides (desktop-first design → móvil)
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  /* El sidebar fijo (228px) pasa a drawer overlay; no debe empujar el layout. */
+  .nav-aside {
+    width: 264px;
+    max-width: 85vw;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+@media (max-width: 768px) {
+  .content {
+    padding: 16px 14px 48px;
+  }
+  .head {
+    padding: 11px 14px;
+    gap: 10px;
+  }
+  .title-row {
+    margin-bottom: 18px;
+  }
+  .title-row h1 {
+    font-size: 24px;
+  }
+  /* KPI strips: 4 → 2 columnas. */
+  .strip {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .kpi .val.big {
+    font-size: 40px;
+  }
+  .panel {
+    padding: 18px 16px;
+  }
+  /* Tablas densas con grids de ancho fijo: scroll horizontal en vez de romper. */
+  .tbl {
+    overflow-x: auto;
+  }
+  /* Banners insight: el botón de acción baja de línea. */
+  .insight {
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+  }
+  .insight > .btn,
+  .insight > button:last-child {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 480px) {
+  .strip {
+    grid-template-columns: 1fr !important;
+  }
+  .title-row h1 {
+    font-size: 22px;
+  }
+}

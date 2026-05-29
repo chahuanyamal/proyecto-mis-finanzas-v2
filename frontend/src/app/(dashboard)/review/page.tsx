@@ -213,7 +213,7 @@ export default function ReviewPage() {
   const swColors = ["var(--violet)", "var(--blue)", "var(--acc)", "var(--gold)", "var(--rust)"];
 
   return (
-    <main style={{ display: "grid", gridTemplateColumns: "340px 1fr", minHeight: "100%", overflow: "hidden" }}>
+    <main className="grid grid-cols-1 lg:grid-cols-[340px_1fr]" style={{ minHeight: "100%" }}>
       {/* Cola (izquierda) */}
       <div style={{ borderRight: "1px solid var(--line)", background: "var(--bg)", overflow: "auto", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "24px 22px 16px", borderBottom: "1px solid var(--line)" }}>
