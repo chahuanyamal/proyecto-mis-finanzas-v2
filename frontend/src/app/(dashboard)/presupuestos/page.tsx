@@ -121,12 +121,22 @@ export default function BudgetsPage() {
       ) : null}
 
       {/* Month nav */}
-      <div className="panel" style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24, padding: "16px 20px" }}>
-        <button className="pill" onClick={() => changeMonth(-1)} aria-label="Mes anterior">‹</button>
-        <div className="serif" style={{ fontStyle: "italic", fontSize: 28, letterSpacing: "-0.015em" }}>
-          {mLabel.name}<span style={{ color: "var(--text-3)", fontSize: 20, marginLeft: 8 }}>{mLabel.year}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24, padding: "16px 20px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 10 }}>
+        <button
+          className="mono"
+          onClick={() => changeMonth(-1)}
+          aria-label="Mes anterior"
+          style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--bg-3)", border: "1px solid var(--line)", color: "var(--text-2)", display: "grid", placeItems: "center", cursor: "pointer" }}
+        >‹</button>
+        <div className="serif" style={{ fontStyle: "italic", fontSize: 30, letterSpacing: "-0.015em" }}>
+          {mLabel.name}<span style={{ color: "var(--text-3)", fontSize: 22, marginLeft: 8 }}>{mLabel.year}</span>
         </div>
-        <button className="pill" onClick={() => changeMonth(1)} aria-label="Mes siguiente">›</button>
+        <button
+          className="mono"
+          onClick={() => changeMonth(1)}
+          aria-label="Mes siguiente"
+          style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--bg-3)", border: "1px solid var(--line)", color: "var(--text-2)", display: "grid", placeItems: "center", cursor: "pointer" }}
+        >›</button>
         <div className="mono" style={{ marginLeft: 18, fontSize: 11, color: "var(--text-3)", display: "flex", flexDirection: "column", gap: 2 }}>
           <span>DÍA {dayOfMonth} / {daysInMonth}</span>
           <span style={{ color: "var(--text)", fontSize: 13 }}>{monthPace}% del mes</span>
@@ -134,22 +144,22 @@ export default function BudgetsPage() {
         <div style={{ marginLeft: "auto", display: "flex", gap: 24 }}>
           <div className="mono" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
             <span className="label">Presupuestado</span>
-            <span className="num" style={{ fontSize: 16 }}>${fmt(totalBudgeted)}</span>
+            <span className="num" style={{ fontSize: 16, fontWeight: 500 }}>${fmt(totalBudgeted)}</span>
           </div>
           <div className="mono" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
             <span className="label">Gastado</span>
-            <span className="num" style={{ fontSize: 16, color: totalSpent > totalBudgeted ? "var(--rust)" : "var(--acc)" }}>${fmt(totalSpent)}</span>
+            <span className="num" style={{ fontSize: 16, fontWeight: 500, color: totalSpent > totalBudgeted ? "var(--rust)" : "var(--acc)" }}>${fmt(totalSpent)}</span>
           </div>
           <div className="mono" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
             <span className="label">Restante</span>
-            <span className="num" style={{ fontSize: 16, color: totalRemaining < 0 ? "var(--rust)" : "var(--acc)" }}>${fmt(totalRemaining)}</span>
+            <span className="num" style={{ fontSize: 16, fontWeight: 500, color: totalRemaining < 0 ? "var(--rust)" : "var(--acc)" }}>${fmt(totalRemaining)}</span>
           </div>
         </div>
       </div>
 
       {/* Pace bar */}
       <div className="panel" style={{ marginBottom: 24 }}>
-        <div className="panel-head">
+        <div className="panel-head" style={{ alignItems: "baseline", marginBottom: 14 }}>
           <h3>Ritmo general · todos los presupuestos</h3>
           <span className="meta">
             Gastaste <strong style={{ color: "var(--text)" }}>{overallPace}%</strong> · esperaríamos <strong style={{ color: "var(--text)" }}>{monthPace}%</strong>
@@ -192,15 +202,22 @@ export default function BudgetsPage() {
                 </div>
                 <div style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>
                   {name}
-                  <span className="mono" style={{ display: "block", fontSize: 11, color: "var(--text-3)", fontWeight: 400, marginTop: 2 }}>
+                  <span className="mono" style={{ display: "block", fontSize: 11, color: "var(--text-3)", fontWeight: 400, marginTop: 2, letterSpacing: "0.04em" }}>
                     ALERTA {budget.alert_at_percent}% · {budget.month}
                   </span>
                 </div>
-                <span className={`chip ${tone}`} style={{ fontSize: 10 }}>{percent}%</span>
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 8px", borderRadius: 99,
+                    color: tone === "over" ? "var(--rust)" : tone === "warn" ? "var(--gold)" : "var(--acc)",
+                    background: tone === "over" ? "rgba(232,122,91,0.1)" : tone === "warn" ? "rgba(230,184,92,0.1)" : "rgba(94,233,181,0.1)",
+                  }}
+                >{percent}%</span>
               </div>
               <div style={{ height: 6, background: "var(--bg-3)", borderRadius: 3, overflow: "hidden", position: "relative", marginBottom: 8 }}>
                 <div style={{ height: "100%", borderRadius: 3, width: `${Math.min(percent, 100)}%`, background: status === "exceeded" ? "var(--rust)" : status === "warning" ? "var(--gold)" : "var(--acc)" }} />
-                <div style={{ position: "absolute", top: -2, bottom: -2, width: 2, background: "var(--text-2)", opacity: 0.5, left: "100%" }} />
+                <div style={{ position: "absolute", top: -2, bottom: -2, width: 2, background: "var(--text-2)", opacity: 0.5, left: `${Math.min(monthPace, 100)}%` }} />
               </div>
               <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-3)" }}>
                 <span><span style={{ color: "var(--text)" }}>${fmt(spent)}</span> / ${fmt(amount)}</span>
@@ -224,8 +241,8 @@ export default function BudgetsPage() {
       {/* Categorías sin presupuesto */}
       {unbudgeted.length > 0 ? (
         <div className="panel">
-          <div className="panel-head">
-            <h3>Categorías sin presupuesto</h3>
+          <div className="panel-head" style={{ alignItems: "baseline", marginBottom: 14 }}>
+            <h3>Categorías sin presupuesto · sugeridas</h3>
             <span className="meta">crea un presupuesto desde cualquier categoría</span>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

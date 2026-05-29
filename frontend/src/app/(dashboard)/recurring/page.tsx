@@ -162,18 +162,18 @@ export default function RecurringPage() {
             {item.name.slice(0, 2).toUpperCase()}
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{item.name}</div>
-            <div className="mono" style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", marginTop: 2 }}>
+            <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: "-0.005em" }}>{item.name}</div>
+            <div className="mono" style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 2 }}>
               {item.category_id ? categories.find((c) => c.id === item.category_id)?.name ?? "SUSCRIPCIÓN" : item.movement_type === "income" ? "INGRESO" : "SUSCRIPCIÓN"}
             </div>
           </div>
           <span className="mono" style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, padding: "2px 7px", borderRadius: 99, ...statusStyle }}>{status.label}</span>
         </div>
-        <div className="num" style={{ fontSize: 22, fontWeight: 500, marginBottom: 2 }}>
+        <div className="num mono" style={{ fontSize: 22, fontWeight: 500, letterSpacing: "-0.015em", marginBottom: 2 }}>
           <span className="mono" style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 400, marginRight: 5 }}>{item.currency}</span>
           {item.movement_type === "income" ? "+" : ""}{fmt(amount)}
         </div>
-        <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 14 }}>
+        <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.04em", marginBottom: 14 }}>
           {FREQ_LABELS[item.frequency].toUpperCase()} · <span style={{ color: "var(--text-2)" }}>${fmt(annual(amount, item.frequency))}/año</span>
         </div>
         <div className="mono" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--line-2)", fontSize: 11 }}>
@@ -256,7 +256,7 @@ export default function RecurringPage() {
                 className="mono"
                 style={{
                   height: 34, background: hit ? hit.bg : "var(--bg-3)", borderRadius: 3, position: "relative",
-                  display: "flex", alignItems: "flex-start", padding: "3px 4px", fontSize: 9, color: "var(--text-3)",
+                  display: "flex", alignItems: "flex-start", padding: "3px 4px", fontSize: 9, color: "var(--text-4)",
                   outline: isToday ? "1.5px solid var(--acc)" : undefined, opacity: isPast && !hit ? 0.55 : 1,
                 }}
               >
@@ -268,7 +268,7 @@ export default function RecurringPage() {
             );
           })}
         </div>
-        <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-3)" }}>
+        <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-3)", letterSpacing: "0.04em" }}>
           <span>1</span>
           <div style={{ display: "flex", gap: 14 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: "rgba(180,156,255,0.4)" }} />1 cargo</span>
@@ -307,10 +307,10 @@ export default function RecurringPage() {
                     </div>
                     <span className="mono" style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, padding: "2px 7px", borderRadius: 99, ...(isToday ? { color: "var(--bg)", background: "var(--acc)" } : { color: "var(--gold)", background: "rgba(230,184,92,0.12)" }) }}>{isToday ? "Hoy" : shortDate(u.due_date)}</span>
                   </div>
-                  <div className="num" style={{ fontSize: 22, fontWeight: 500, marginBottom: 2 }}>
+                  <div className="num mono" style={{ fontSize: 22, fontWeight: 500, letterSpacing: "-0.015em", marginBottom: 2 }}>
                     <span className="mono" style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 400, marginRight: 5 }}>{u.currency}</span>{fmt(asNumber(u.amount))}
                   </div>
-                  <div className="mono" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, marginTop: 12, borderTop: "1px solid var(--line-2)", fontSize: 11 }}>
+                  <div className="mono" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--line-2)", fontSize: 11 }}>
                     <span style={{ color: "var(--text-3)" }}>Próximo cobro</span>
                     <span style={{ color: isToday ? "var(--acc)" : "var(--gold)", fontWeight: 500 }}>en {u.days_until} día(s)</span>
                   </div>

@@ -306,7 +306,8 @@ export default function ReviewPage() {
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--gold)", boxShadow: "0 0 0 3px rgba(230,184,92,0.15)" }} />
               {isFlaggedView ? (current.flag_reason || "Marcado para revisar") : "Sin categoría · sin regla previa"}
             </div>
-            <h2 style={{ fontSize: 34, fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 1.1, marginBottom: 8 }}>{current.description}</h2>
+            <h2 style={{ fontSize: 38, fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 1.1, marginBottom: 8 }}>{current.description}</h2>
+            <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 24, padding: "6px 12px", background: "var(--bg)", borderRadius: 5, border: "1px solid var(--line-2)", display: "inline-block", letterSpacing: "0.06em" }}>{current.description.toUpperCase()}</div>
 
             <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 32, rowGap: 14, margin: "24px 0 28px", padding: "22px 0", borderTop: "1px solid var(--line-2)", borderBottom: "1px solid var(--line-2)" }}>
               <dt className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)", paddingTop: 4 }}>Monto</dt>

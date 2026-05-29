@@ -20,6 +20,8 @@ export default function TagsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [colorFilter, setColorFilter] = useState<"all" | "color" | "nocolor">("all");
 
   useEffect(() => {
     if (!hasVerified) void fetchMe();
@@ -71,6 +73,16 @@ export default function TagsPage() {
 
   const withColor = useMemo(() => tags.filter((t) => t.color), [tags]);
   const withoutColor = useMemo(() => tags.filter((t) => !t.color), [tags]);
+
+  const tableTags = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return tags.filter((t) => {
+      if (colorFilter === "color" && !t.color) return false;
+      if (colorFilter === "nocolor" && t.color) return false;
+      if (!q) return true;
+      return t.name.toLowerCase().includes(q);
+    });
+  }, [tags, query, colorFilter]);
 
   function editTag(tag: Tag) {
     setEditingId(tag.id);
@@ -135,57 +147,47 @@ export default function TagsPage() {
         </div>
       </section>
 
-      {/* Create / edit form */}
-      <div className="panel" style={{ marginBottom: 24 }}>
-        <div className="panel-head">
-          <h3>{editingId ? "Editar etiqueta" : "Nueva etiqueta"}</h3>
+      {/* Create / edit form — `.create` grid: input · swatch row · button */}
+      <form
+        onSubmit={save}
+        className="grid items-center gap-3 rounded-[10px] border border-[color:var(--line)] bg-[color:var(--bg-2)] px-5 py-[18px]"
+        style={{ gridTemplateColumns: "1fr auto auto", marginBottom: 20 }}
+      >
+        <input
+          className="rounded-[7px] border border-[color:var(--line)] bg-[color:var(--bg)] px-3 py-[9px] text-[13px] text-[color:var(--text)] outline-none focus:border-[color:var(--acc)]"
+          placeholder={'Nombre de la etiqueta… ej. "viaje a Japón"'}
+          value={form.name}
+          onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))}
+          required
+        />
+        <div className="flex items-center gap-2 px-1.5">
+          {SWATCHES.map((color) => (
+            <button
+              type="button"
+              key={color}
+              onClick={() => setForm((v) => ({ ...v, color }))}
+              className="h-[22px] w-[22px] rounded-full transition-transform hover:scale-110"
+              style={{
+                background: color,
+                border: "2px solid var(--bg-2)",
+                outline: form.color === color ? "2px solid var(--text)" : "none",
+                outlineOffset: 2,
+              }}
+              aria-label={color}
+            />
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
           {editingId ? (
-            <button className="meta" style={{ cursor: "pointer" }} onClick={reset}>
-              cancelar ✕
+            <button type="button" className="btn ghost" onClick={reset}>
+              Cancelar
             </button>
           ) : null}
-        </div>
-        <form onSubmit={save} className="flex flex-wrap items-end gap-4 p-1">
-          <div className="field" style={{ marginBottom: 0, flex: "1 1 240px" }}>
-            <label>Nombre</label>
-            <input
-              className="input"
-              placeholder='ej. "viaje a Japón"'
-              value={form.name}
-              onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))}
-              required
-            />
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Color</label>
-            <div className="flex items-center gap-2">
-              {SWATCHES.map((color) => (
-                <button
-                  type="button"
-                  key={color}
-                  onClick={() => setForm((v) => ({ ...v, color }))}
-                  className="h-[22px] w-[22px] rounded-full"
-                  style={{
-                    background: color,
-                    outline: form.color === color ? "2px solid var(--text)" : "none",
-                    outlineOffset: 2,
-                  }}
-                  aria-label={color}
-                />
-              ))}
-              <input
-                className="input"
-                style={{ width: 110 }}
-                value={form.color ?? ""}
-                onChange={(e) => setForm((v) => ({ ...v, color: e.target.value }))}
-              />
-            </div>
-          </div>
           <button type="submit" className="btn primary">
             {editingId ? "Guardar cambios" : "+ Crear etiqueta"}
           </button>
-        </form>
-      </div>
+        </div>
+      </form>
 
       {isLoading ? (
         <div className="flex items-center gap-2 py-10 font-mono text-[13px] text-[color:var(--text-3)]">
@@ -252,6 +254,28 @@ export default function TagsPage() {
             ) : null}
           </div>
 
+          {/* Filters */}
+          <div className="filters" style={{ marginTop: 24 }}>
+            <div className="filt-search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+              <input placeholder="Buscar por nombre…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            </div>
+            <div className="seg" style={{ marginLeft: "auto" }}>
+              <button className={colorFilter === "all" ? "on" : ""} onClick={() => setColorFilter("all")}>
+                Todas · {tags.length}
+              </button>
+              <button className={colorFilter === "color" ? "on" : ""} onClick={() => setColorFilter("color")}>
+                Con color · {withColor.length}
+              </button>
+              <button className={colorFilter === "nocolor" ? "on" : ""} onClick={() => setColorFilter("nocolor")}>
+                Sin color · {withoutColor.length}
+              </button>
+            </div>
+          </div>
+
           {/* Table with hex */}
           <div className="tbl">
             <div className="grid grid-cols-[1fr_140px_130px_32px] gap-3.5 px-4 tbl-head">
@@ -260,7 +284,7 @@ export default function TagsPage() {
               <div className="r">ID</div>
               <div />
             </div>
-            {tags.map((tag) => (
+            {tableTags.map((tag) => (
               <div
                 key={tag.id}
                 className="grid cursor-pointer grid-cols-[1fr_140px_130px_32px] items-center gap-3.5 border-b border-[color:var(--line-2)] px-4 py-3 last:border-0 hover:bg-[color:var(--bg-3)]"
