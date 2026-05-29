@@ -7,7 +7,7 @@ import "@/styles/globals.css";
 // Instrument Serif italic (acentos editoriales). Una sola dirección oscura premium.
 const geistSans = Geist({
   variable: "--font-geist-sans",
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["100", "200", "300", "400", "500", "600", "700"],
   subsets: ["latin"],
   display: "swap",
 });
@@ -38,8 +38,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className="dark" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased`}>
+    <html
+      lang="es"
+      className={`dark ${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="antialiased">
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>
