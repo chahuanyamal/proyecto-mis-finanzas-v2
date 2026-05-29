@@ -24,6 +24,9 @@ def bootstrap():
         text=True,
     )
     print(result.stdout.strip())
+    if result.returncode != 0:
+        print(f"Seed failed: {result.stderr}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

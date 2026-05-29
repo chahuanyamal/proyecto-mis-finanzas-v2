@@ -1,231 +1,201 @@
 # Mis Finanzas V2
 
-App web local de finanzas personales: importar cartolas PDF, categorizar movimientos, dashboard mensual, presupuestos y exportación a Excel. Multiusuario, con todos los datos aislados por `user_id`.
-
----
+Aplicación web local de finanzas personales para importar cartolas PDF, categorizar movimientos, revisar dashboards mensuales, gestionar presupuestos y exportar movimientos a Excel.
 
 ## Stack
 
-| Capa         | Tecnología                                   | Versión        |
-| ------------ | -------------------------------------------- | -------------- |
-| Frontend     | Next.js (App Router) + React                 | 15.x / 19.x    |
-| Lenguaje FE  | TypeScript (`strict`)                        | 5.7            |
-| Estilos      | Tailwind CSS                                 | 3.4            |
-| Estado/datos | TanStack React Query + Zustand + Axios       | 5.x / 5.x / 1.7 |
-| Backend      | FastAPI + Uvicorn                            | 0.115 / 0.32   |
-| Lenguaje BE  | Python                                       | 3.12           |
-| Gestor deps  | uv                                           | 0.8+           |
-| ORM          | SQLAlchemy async                             | 2.0            |
-| Driver DB    | asyncpg                                      | 0.30           |
-| DB           | PostgreSQL                                   | 16             |
-| Migraciones  | Alembic                                      | 1.14           |
-| Auth         | PyJWT + bcrypt (cookies HttpOnly)            | 2.9 / 4.2      |
-| PDF / OCR    | pdfplumber + pytesseract (Tesseract OCR)     | 0.11 / 0.3     |
-| Excel        | openpyxl                                     | 3.1            |
-| Infra        | Docker Compose                               | —              |
-
----
+| Capa | Tecnología | Versión |
+| --- | --- | --- |
+| Frontend | Next.js App Router | 15.5.x |
+| UI | React | 19.2.x |
+| Lenguaje frontend | TypeScript strict | 5.9.x |
+| Estilos | Tailwind CSS | 3.4.x |
+| Estado/datos frontend | TanStack React Query, Zustand, Axios | 5.x, 5.x, 1.16.x |
+| Tests frontend | Vitest, Testing Library, jsdom | 2.1.x, 16.x, 29.x |
+| Backend | FastAPI, Uvicorn | 0.115+, 0.32+ |
+| Lenguaje backend | Python | 3.12 |
+| Dependencias backend | uv | 0.8+ |
+| ORM | SQLAlchemy async | 2.0+ |
+| Base de datos | PostgreSQL | 16 |
+| Driver DB | asyncpg | 0.30+ |
+| Migraciones | Alembic | 1.14+ |
+| Auth | PyJWT, bcrypt, cookies HttpOnly | 2.9+, 4.2+ |
+| PDF/OCR | pdfplumber, pytesseract, Tesseract OCR | 0.11+, 0.3+ |
+| Excel | openpyxl | 3.1+ |
+| Infra | Docker Compose | v2 |
 
 ## Requisitos previos
 
-**Para correr con Docker (recomendado):**
-
-- Docker Engine **24+** y Docker Compose v2
-
-**Para desarrollo local (sin Docker):**
-
-- Node.js **22+** y npm 10+
-- Python **3.12+**
-- [uv](https://docs.astral.sh/uv/) **0.8+**
-- PostgreSQL **16** corriendo localmente (o accesible vía `DATABASE_URL`)
-- Tesseract OCR + paquete de idioma español (`tesseract-ocr`, `tesseract-ocr-spa`) — solo necesario para el fallback OCR de cartolas escaneadas
-
----
+- Docker Engine 24+ y Docker Compose v2 para levantar todo con contenedores.
+- Node.js 22.12+ y npm 10+ para desarrollo frontend local.
+- Python 3.12+ para desarrollo backend local.
+- uv 0.8+ para instalar y ejecutar dependencias Python.
+- PostgreSQL 16 para desarrollo backend sin Docker.
+- Tesseract OCR con idioma español (`tesseract-ocr`, `tesseract-ocr-spa`) si se probará OCR fuera de Docker.
 
 ## Variables de entorno
 
-Copia `.env.example` a `.env` y ajusta los valores. En Docker Compose la mayoría tiene un valor por defecto integrado; **`SECRET_KEY` debe cambiarse antes de cualquier despliegue real**.
-
-| Variable                     | Descripción                                                        | Requerida | Valor de ejemplo |
-| ---------------------------- | ------------------------------------------------------------------ | --------- | ---------------- |
-| `APP_ENV`                    | Entorno de ejecución (`development` / `production`)                | No        | `development` |
-| `DEBUG`                      | Activa `echo` de SQLAlchemy y modo debug                           | No        | `true` |
-| `ALLOWED_ORIGINS`            | Orígenes CORS permitidos (separados por coma)                      | No        | `http://localhost:1510` |
-| `INTERNAL_API_URL`           | URL interna del backend usada por el rewrite del frontend          | Sí (FE)   | `http://backend:8000` |
-| `DATABASE_URL`               | Cadena de conexión async a PostgreSQL                              | **Sí**    | `postgresql+asyncpg://finanzas:finanzas@postgres:5432/finanzas` |
-| `UPLOAD_DIR`                 | Carpeta donde se guardan los PDFs subidos                          | No        | `/app/uploads` |
-| `POSTGRES_DB`                | Nombre de la base de datos (servicio postgres)                     | **Sí**    | `finanzas` |
-| `POSTGRES_USER`              | Usuario de la base de datos                                        | **Sí**    | `finanzas` |
-| `POSTGRES_PASSWORD`          | Contraseña de la base de datos                                     | **Sí**    | `finanzas` |
-| `SECRET_KEY`                 | Clave de firma JWT (mínimo 32 chars; usar `openssl rand -hex 32`)  | **Sí**    | `c0ffee...` (32+ bytes hex) |
-| `JWT_ALGORITHM`              | Algoritmo de firma JWT                                             | No        | `HS256` |
-| `JWT_ACCESS_EXPIRE_MINUTES`  | Minutos de validez del access token                               | No        | `15` |
-| `JWT_REFRESH_EXPIRE_DAYS`    | Días de validez del refresh token                                 | No        | `7` |
-| `COOKIE_SECURE`              | Marca cookies como `Secure` (activar `true` en prod con HTTPS)     | No        | `false` |
-| `ADMIN_EMAIL`                | Email del admin creado en el seed inicial                         | No        | `admin@finanzas.local` |
-| `ADMIN_FULL_NAME`            | Nombre del admin inicial                                           | No        | `Admin` |
-| `ADMIN_PASSWORD`             | Contraseña del admin inicial                                       | No        | `admin123` |
-
-> `INTERNAL_API_URL` solo aplica al frontend (Next.js reescribe `/api/*` hacia el backend). Las demás aplican al backend / Postgres.
-
----
+| Variable | Descripción | Requerida | Valor de ejemplo |
+| --- | --- | --- | --- |
+| `APP_ENV` | Entorno de ejecución. En `production` valida que `SECRET_KEY` sea segura. | No | `development` |
+| `DEBUG` | Activa logging SQL de SQLAlchemy. | No | `false` |
+| `ALLOWED_ORIGINS` | Orígenes CORS permitidos separados por coma. | No | `http://localhost:1510` |
+| `INTERNAL_API_URL` | URL usada por Next.js para reescribir `/api/*` hacia el backend. | Sí frontend | `http://backend:8000` |
+| `DATABASE_URL` | URL async SQLAlchemy hacia PostgreSQL. | Sí backend | `postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas` |
+| `UPLOAD_DIR` | Directorio donde se guardan PDFs subidos. | No | `/app/uploads` |
+| `POSTGRES_DB` | Nombre de la DB creada por el contenedor Postgres. | Sí Docker | `finanzas` |
+| `POSTGRES_USER` | Usuario de Postgres. | Sí Docker | `finanzas` |
+| `POSTGRES_PASSWORD` | Password de Postgres. | Sí Docker | `finanzas` |
+| `SECRET_KEY` | Clave de firma JWT, mínimo 32 caracteres en producción. | Sí backend | `openssl-rand-hex-32...` |
+| `JWT_ALGORITHM` | Algoritmo JWT. | No | `HS256` |
+| `JWT_ACCESS_EXPIRE_MINUTES` | Duración del access token en minutos. | No | `15` |
+| `JWT_REFRESH_EXPIRE_DAYS` | Duración del refresh token en días. | No | `7` |
+| `COOKIE_SECURE` | Marca cookies como `Secure`; usar `true` con HTTPS. | No | `false` |
+| `ADMIN_EMAIL` | Email del admin creado por el seed. | No | `admin@finanzas.local` |
+| `ADMIN_FULL_NAME` | Nombre visible del admin creado por el seed. | No | `Admin` |
+| `ADMIN_PASSWORD` | Password inicial del admin creado por el seed. | No | `admin123` |
+| `TEST_DATABASE_URL` | URL opcional para correr tests backend contra Postgres en vez de SQLite en memoria. | No | `postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas_test` |
 
 ## Levantar en local (sin Docker)
 
-Requiere un PostgreSQL 16 ya corriendo y accesible. Crea la base de datos vacía antes de empezar.
-
 ```bash
-# 0. Base de datos (una sola vez)
-createdb finanzas            # o: psql -c "CREATE DATABASE finanzas;"
+# 1. Base de datos local
+createdb finanzas
 
-# 1. Backend
+# 2. Variables de entorno
+cp .env.example .env
+# Edita .env y usa DATABASE_URL=postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas
+
+# 3. Backend
 cd backend
-cp ../.env.example .env       # ajusta DATABASE_URL para apuntar a localhost:5432
-uv sync                       # instala dependencias (incluye grupo dev)
-uv run alembic upgrade head   # aplica migraciones
-uv run python -m app.scripts.seed   # crea admin + instituciones + categorías
-uv run uvicorn app.main:app --reload --port 8000
-# Backend listo en http://localhost:8000  ·  Swagger en http://localhost:8000/docs
+uv sync
+uv run alembic upgrade head
+uv run python -m app.scripts.seed
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# 2. Frontend (en otra terminal)
+# 4. Frontend, en otra terminal
 cd frontend
 npm install
 INTERNAL_API_URL=http://localhost:8000 npm run dev
-# Frontend listo en http://localhost:3000
 ```
 
-> En local el frontend corre en el puerto **3000** (Next.js dev). En Docker se expone en **1510**.
+URLs locales:
 
----
+- Backend: `http://localhost:8000`
+- Swagger/OpenAPI: `http://localhost:8000/docs`
+- Frontend sin Docker: `http://localhost:3000`
 
 ## Levantar con Docker
 
 ```bash
-# 1. Preparar entorno
+# Crear archivo de entorno
 cp .env.example .env
-#    Editar .env y cambiar SECRET_KEY:  openssl rand -hex 32
 
-# 2. Build + arranque (en segundo plano)
+# Recomendado antes de levantar en un entorno real
+openssl rand -hex 32
+# Copia el valor generado en SECRET_KEY dentro de .env
+
+# Build de imágenes
+docker compose build
+
+# Levantar servicios en segundo plano
+docker compose up -d
+
+# Build + levantar en un solo comando
 docker compose up --build -d
 
-# 3. Ver logs en vivo (Ctrl-C para salir, los servicios siguen corriendo)
+# Ver logs de todos los servicios
 docker compose logs -f
 
-# 4. Detener y eliminar contenedores (conserva los datos)
+# Ver logs de un servicio específico
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f postgres
+
+# Detener contenedores conservando volúmenes
 docker compose down
 
-# 4b. Detener y BORRAR volúmenes (resetea la base de datos)
+# Detener y borrar volúmenes, reseteando la DB
 docker compose down -v
 ```
 
-El `entrypoint.sh` del backend espera a Postgres, aplica migraciones Alembic y ejecuta el seed automáticamente.
+URLs con Docker:
 
-| Servicio     | URL                          |
-| ------------ | ---------------------------- |
-| Frontend     | http://localhost:1510        |
-| Backend API  | http://localhost:8000        |
-| Swagger Docs | http://localhost:8000/docs   |
-| PostgreSQL   | localhost:5432               |
-
-Atajos equivalentes vía `make`: `make build`, `make up`, `make down`, `make logs`, `make reset-db`, `make shell-backend`, `make shell-db`.
-
----
+- Frontend: `http://localhost:1510`
+- Backend: `http://localhost:8000`
+- Swagger/OpenAPI: `http://localhost:8000/docs`
+- PostgreSQL: `localhost:5432`
 
 ## Scripts disponibles
 
-**Frontend (`frontend/`, vía `npm run <script>`):**
-
-| Comando             | Descripción                              | Cuándo usarlo                                     |
-| ------------------- | ---------------------------------------- | ------------------------------------------------- |
-| `dev`               | Servidor de desarrollo con hot-reload    | Día a día desarrollando la UI                     |
-| `build`             | Build de producción optimizado           | Antes de desplegar / dentro del Dockerfile        |
-| `start`             | Sirve el build de producción             | Probar localmente el resultado de `build`         |
-| `lint`              | ESLint sobre `src/**/*.{ts,tsx}`         | Antes de commitear o en CI                        |
-| `typecheck`         | `tsc --noEmit` (verificación de tipos)   | Validar tipos sin emitir JS; en CI                |
-| `test`              | Vitest en modo run (jsdom)               | Tests unitarios/componentes; en CI                |
-| `test:watch`        | Vitest en modo watch                     | Desarrollar tests con recarga                     |
-
-**Backend (`backend/`, vía `uv run <cmd>`):**
-
-| Comando                              | Descripción                                  | Cuándo usarlo                          |
-| ------------------------------------ | -------------------------------------------- | -------------------------------------- |
-| `uvicorn app.main:app --reload`      | Servidor de desarrollo (equivalente a `dev`) | Desarrollar la API con recarga         |
-| `uvicorn app.main:app`               | Servidor sin recarga (equivalente a `start`) | Ejecución estable / producción         |
-| `pytest`                             | Ejecuta la suite de tests (`test`)           | Antes de commitear o en CI             |
-| `alembic upgrade head`               | Aplica migraciones de BD                     | Tras clonar o crear nuevas migraciones |
-| `python -m app.scripts.seed`         | Crea admin + instituciones + categorías      | Primera inicialización de la BD        |
-
-> El backend no usa un comando `build` propio (Python no transpila); el "build" ocurre al construir la imagen Docker (`uv sync`).
-
-**Tests:** por defecto corren contra **SQLite en memoria** (sin necesidad de Postgres). Para correrlos contra Postgres:
-
-```bash
-cd backend
-uv run pytest                                   # SQLite en memoria (por defecto)
-TEST_DATABASE_URL=postgresql+asyncpg://finanzas:finanzas@localhost:5432/finanzas_test \
-  uv run pytest                                 # contra Postgres
-```
-
----
+| Comando | Descripción | Cuándo usarlo |
+| --- | --- | --- |
+| `cd frontend && npm run dev` | Inicia Next.js en modo desarrollo. | Desarrollo diario frontend. |
+| `cd frontend && npm run build` | Genera build productivo de Next.js. | Antes de Docker/merge/despliegue. |
+| `cd frontend && npm run start` | Sirve el build productivo. | Probar producción local tras `build`. |
+| `cd frontend && npm test` | Ejecuta Vitest una vez. | Validar tests frontend en CI/local. |
+| `cd frontend && npm run lint` | Ejecuta ESLint sobre `src/**/*.{ts,tsx}`. | Antes de commitear cambios frontend. |
+| `cd frontend && npm run type-check` | Ejecuta `tsc --noEmit`. | Validar TypeScript estricto. |
+| `cd frontend && npm run typecheck` | Alias histórico de `type-check`. | Compatibilidad con comandos anteriores. |
+| `cd frontend && npm run test:watch` | Ejecuta Vitest en watch mode. | Desarrollar tests frontend. |
+| `cd backend && uv run uvicorn app.main:app --reload` | Inicia FastAPI con reload. | Desarrollo diario backend. |
+| `cd backend && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000` | Inicia FastAPI sin reload. | Ejecución local estable. |
+| `cd backend && uv run pytest tests/ -q` | Ejecuta tests backend. | Validar backend antes de merge. |
+| `cd backend && uv run alembic upgrade head` | Aplica migraciones pendientes. | Inicializar o actualizar DB. |
+| `cd backend && uv run alembic heads` | Lista heads de Alembic. | Verificar que no existan ramas de migración. |
+| `cd backend && uv run python -m app.scripts.seed` | Siembra admin, instituciones y categorías. | Primera carga o reparación de datos base. |
+| `docker compose build` | Construye imágenes backend/frontend. | Validar Dockerfiles y preparar despliegue. |
+| `docker compose up -d` | Levanta Postgres, backend y frontend. | Ejecutar app completa con Docker. |
+| `docker compose logs -f` | Muestra logs en vivo. | Diagnóstico de startup/runtime. |
+| `docker compose down` | Detiene servicios. | Apagar entorno Docker. |
 
 ## Estructura del proyecto
 
-```
+```text
 .
-├── docker-compose.yml          # Orquesta postgres + backend + frontend
-├── Makefile                    # Atajos de Docker Compose
-├── .env.example                # Plantilla de variables de entorno
-├── AGENTS.md                   # Convenciones y restricciones del proyecto
-├── backend/                    # API FastAPI
-│   ├── Dockerfile              # Imagen Python 3.12 + Tesseract + uv
-│   ├── entrypoint.sh           # Espera DB → migra → seed → arranca uvicorn
-│   ├── pyproject.toml          # Dependencias y config de pytest
-│   ├── alembic.ini             # Config de Alembic
-│   ├── alembic/                # Entorno + migraciones de esquema
-│   │   └── versions/           # 0001 esquema … 0004 cat.user_id, 0005 revoked_tokens
-│   ├── tests/                  # Tests de auth, cuentas, transacciones, budgets, parser
-│   └── app/
-│       ├── main.py             # create_app(): CORS, routers, /health
-│       ├── core/               # config (settings), database (engine/session), security (JWT/bcrypt)
-│       ├── models/             # Modelos SQLAlchemy (user, account, transaction, budget, ...)
-│       ├── modules/            # Un paquete por dominio: router + schemas (Pydantic)
-│       │   ├── auth/           # Login, refresh (con rotación), logout, me, register; revocación de JWT
-│       │   ├── accounts/       # CRUD de cuentas + instituciones
-│       │   ├── categories/     # Categorías (defaults del sistema + propias por usuario)
-│       │   ├── tags/           # Tags por usuario
-│       │   ├── rules/          # Reglas de auto-categorización
-│       │   ├── transactions/   # CRUD + auto-categorizar + export Excel
-│       │   ├── budgets/        # Presupuestos mensuales por categoría
-│       │   ├── dashboard/      # Resumen mensual (ingresos/gastos/presupuestos)
-│       │   └── statements/     # Upload PDF, parser, preview, confirmación, historial
-│       └── scripts/            # bootstrap (migra+seed) y seed (admin/instituciones/categorías)
-└── frontend/                   # App Next.js 15
-    ├── Dockerfile              # Build multi-stage → output standalone
-    ├── package.json            # Scripts y dependencias
-    ├── tsconfig.json           # TypeScript strict, alias @/*
-    ├── next.config.mjs         # output standalone + rewrite /api/* → backend
-    ├── tailwind.config.ts      # Configuración de Tailwind
-    └── src/
-        ├── middleware.ts       # Protege rutas según cookies de sesión
-        ├── app/                # Rutas App Router: (auth)/login y (dashboard)/*
-        ├── components/         # Componentes (bóveda, statements)
-        ├── lib/                # api.ts (cliente axios), api-types.ts, query-client
-        ├── stores/             # Estado Zustand (auth)
-        └── styles/             # globals.css (Tailwind)
+├── .env.example                 # Plantilla de variables de entorno.
+├── AGENTS.md                    # Reglas de trabajo del proyecto.
+├── docker-compose.yml           # Orquesta postgres, backend y frontend.
+├── Makefile                     # Atajos para Docker Compose.
+├── README.md                    # Documentación principal.
+├── backend/                     # API FastAPI y dominio de negocio.
+│   ├── Dockerfile               # Imagen Python 3.12 con uv, Tesseract y cliente Postgres.
+│   ├── entrypoint.sh            # Espera Postgres, ejecuta bootstrap y levanta Uvicorn.
+│   ├── pyproject.toml           # Dependencias Python y configuración de pytest.
+│   ├── uv.lock                  # Lockfile de dependencias backend.
+│   ├── alembic.ini              # Configuración de Alembic.
+│   ├── alembic/                 # Entorno y migraciones de base de datos.
+│   │   └── versions/            # Migraciones lineales 0001..0005.
+│   ├── app/                     # Código fuente backend.
+│   │   ├── main.py              # Factory FastAPI, CORS, routers y healthcheck.
+│   │   ├── core/                # Configuración, conexión DB y seguridad JWT/bcrypt.
+│   │   ├── models/              # Modelos SQLAlchemy.
+│   │   ├── modules/             # Módulos por dominio con routers y schemas.
+│   │   └── scripts/             # Bootstrap y seed idempotente.
+│   └── tests/                   # Suite pytest backend.
+└── frontend/                    # Aplicación Next.js.
+    ├── Dockerfile               # Build multi-stage con output standalone.
+    ├── package.json             # Scripts npm y dependencias frontend.
+    ├── package-lock.json        # Lockfile npm.
+    ├── next.config.mjs          # Output standalone y rewrite `/api/*`.
+    ├── tsconfig.json            # TypeScript strict y alias `@/*`.
+    ├── eslint.config.mjs        # ESLint flat config.
+    ├── vitest.config.mts        # Configuración de Vitest/jsdom.
+    ├── tailwind.config.ts       # Configuración Tailwind.
+    └── src/                     # Código fuente frontend.
+        ├── app/                 # Rutas App Router.
+        ├── components/          # Componentes reutilizables.
+        ├── lib/                 # Cliente API, tipos y React Query.
+        ├── stores/              # Estado global Zustand.
+        └── styles/              # Estilos globales Tailwind.
 ```
-
----
 
 ## Limitaciones conocidas
 
-1. **`ADMIN_PASSWORD` y password de Postgres por defecto.** Los valores de `.env.example` (`ADMIN_PASSWORD=admin123`, `POSTGRES_PASSWORD`) son solo para desarrollo y deben cambiarse antes de exponer la app. El `SECRET_KEY` sí se valida al arrancar: con `APP_ENV=production` la app se niega a iniciar si es el valor por defecto o tiene menos de 32 caracteres.
-2. **Parsers bancarios sin validación contra cartolas reales.** La detección de banco (Itaú, BICE, Prex, UglyCash, TD Bank, Schwab, Alpaca) y los parsers se validan solo con fixtures sintéticos; requieren ajuste con PDFs reales por institución.
-3. **OCR dependiente del entorno.** El fallback OCR necesita Tesseract con idioma español instalado; fuera de Docker hay que instalarlo manualmente o el parsing de PDFs escaneados fallará.
-4. **`COOKIE_SECURE=false` por defecto.** En producción con HTTPS debe ponerse en `true` para evitar envío de cookies sobre conexiones no cifradas.
-5. **Cobertura de tests de frontend acotada.** Hay harness de Vitest + Testing Library con tests del cliente API y de un componente; aún no hay pruebas e2e ni cobertura amplia de páginas.
-
-> **Resuelto en esta versión:**
-> - **Aislamiento de categorías por usuario** (defaults del sistema compartidos/solo-lectura + categorías propias; no se pueden ver/referenciar las ajenas).
-> - **Revocación de JWT** vía tabla `revoked_tokens` en Postgres (sin Redis): `logout` invalida los tokens y el `refresh` rota e invalida el refresh token usado.
-> - **Seed con advisory lock** de Postgres para evitar duplicados en arranques concurrentes.
-```
+1. Los parsers PDF se validan principalmente con fixtures sintéticos; requieren ajustes con cartolas reales de cada institución.
+2. El OCR depende de Tesseract y del idioma español instalado fuera de Docker.
+3. No hay suite e2e; la cobertura frontend actual es acotada a cliente API y componentes puntuales.
+4. `ADMIN_PASSWORD`, `POSTGRES_PASSWORD` y `COOKIE_SECURE=false` son valores de desarrollo; deben cambiarse antes de exponer la app.
+5. La revocación JWT usa una tabla en Postgres; funciona para esta app local, pero no incluye un job dedicado de limpieza periódica.
+6. No hay workers separados; parsing/OCR corre dentro del backend por restricción de la v1.
+7. El frontend usa rewrites de Next.js hacia el backend; en despliegues con proxy externo hay que revisar `INTERNAL_API_URL` y CORS.
