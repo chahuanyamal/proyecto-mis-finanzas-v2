@@ -1,93 +1,124 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Tema "terminal Bloomberg" (sistema de diseño Boveda).
+ * Sistema de diseño "Bóveda" — dark premium, acento mint sobre fondo casi-negro.
  *
- * Extiende de forma aditiva los tokens previos de la v2 (surface/slate/brand)
- * y suma la paleta de la app anterior: amber como acento, escala monocromática
- * de grises (navy/ink) y rojo/verde duros para P&L. Radios en 0 (cajas planas).
+ * Los tokens Tailwind se remapean a la paleta Bóveda para que el markup previo
+ * (text-slate-*, bg-brand-*, text-emerald-*, text-red-*) adopte automáticamente
+ * la nueva dirección visual:
+ *   - brand  → mint (#5EE9B5)  · CTAs, positivos
+ *   - emerald → mint            · positivos
+ *   - red/rose → rust/bad       · negativos
+ *   - amber/yellow → gold       · advertencias
+ *   - slate  → escala texto↔fondo Bóveda (claro=texto, oscuro=superficie)
+ *   - surface/navy/ink → escala de fondos Bóveda
  */
+const mint = {
+  DEFAULT: "#5ee9b5",
+  50: "#eafdf5",
+  100: "#c9f7e6",
+  200: "#9ff0d2",
+  300: "#76ecc3",
+  400: "#5ee9b5",
+  500: "#5ee9b5",
+  600: "#3dcc9a",
+  700: "#2ba37b",
+  800: "#1f7a5d",
+  900: "#155440",
+  950: "#0c3327",
+};
+
 const config: Config = {
   darkMode: ["class"],
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
       colors: {
-        // Acento principal: amber Bloomberg.
-        brand: {
-          DEFAULT: "#ff8a00",
-          50: "#fff7e6",
-          100: "#ffecc7",
-          200: "#ffd98a",
-          300: "#ffc14d",
-          400: "#ffa620",
-          500: "#ff8a00",
-          600: "#e07300",
-          700: "#b35a00",
-          800: "#864200",
-          900: "#5a2c00",
-          950: "#3a1d00",
-        },
-        // Superficies oscuras: se conserva la escala numérica de la v2
-        // (las páginas existentes usan surface-900/950) y se mantiene cercana
-        // al negro absoluto del look terminal.
+        // Acento principal: mint.
+        brand: mint,
+        accent: { 300: "#76ecc3", 400: "#5ee9b5", 500: "#5ee9b5", 600: "#3dcc9a" },
+        mint,
+        // Escala de superficies oscuras Bóveda.
         surface: {
-          DEFAULT: "#0f172a",
-          50: "#f8fafc",
-          100: "#f1f5f9",
-          200: "#e2e8f0",
-          700: "#0e0e0e",
-          800: "#0a0a0a",
-          900: "#050505",
-          950: "#000000",
+          DEFAULT: "#111114",
+          50: "#f5f2eb",
+          100: "#c9c5bc",
+          200: "#807a6e",
+          700: "#17171c",
+          800: "#111114",
+          900: "#0a0a0b",
+          950: "#0a0a0b",
         },
-        // Grises monocromáticos (negro → carbón) para el chrome de la app.
         navy: {
-          950: "#000000",
-          900: "#050505",
-          850: "#0a0a0a",
-          800: "#0e0e0e",
-          750: "#121212",
-          700: "#161616",
-          650: "#1c1c1c",
-          600: "#222222",
-          500: "#2c2c2c",
-          400: "#3a3a3a",
-          300: "#4a4a4a",
+          950: "#0a0a0b",
+          900: "#0a0a0b",
+          850: "#0e0e12",
+          800: "#111114",
+          750: "#14141a",
+          700: "#17171c",
+          650: "#1a1a20",
+          600: "#1e1e25",
+          500: "#26262f",
+          400: "#33333d",
+          300: "#4f4a42",
         },
-        ink: { 950: "#000000", 900: "#050505", 800: "#0a0a0a", 700: "#121212" },
-        income: { DEFAULT: "#00d26a", light: "#39e088", dark: "#00a050" },
-        expense: { DEFAULT: "#ff3b3b", light: "#ff6b6b", dark: "#cc2a2a" },
-        warning: { DEFAULT: "#ffd700", light: "#ffe34d", dark: "#d9b600" },
-        accent: { 300: "#ffc14d", 400: "#ffa620", 500: "#ff8a00", 600: "#e07300" },
+        ink: { 950: "#0a0a0b", 900: "#0a0a0b", 800: "#111114", 700: "#17171c" },
+        // Semánticos Bóveda.
+        income: { DEFAULT: "#5ee9b5", light: "#76ecc3", dark: "#3dcc9a" },
+        expense: { DEFAULT: "#e87a5b", light: "#ff6b5b", dark: "#cc5a3e" },
+        warning: { DEFAULT: "#e6b85c", light: "#f0cd80", dark: "#cc9f3e" },
+        gold: { DEFAULT: "#e6b85c", light: "#f0cd80", dark: "#cc9f3e" },
+        rust: { DEFAULT: "#e87a5b", light: "#ff6b5b" },
+        bad: { DEFAULT: "#ff6b5b" },
+        violet: { DEFAULT: "#b49cff", light: "#c9b8ff" },
+        // 'slate' remapeado: claros = texto, oscuros = superficie.
         slate: {
-          50: "#f8fafc",
-          100: "#f1f5f9",
-          200: "#e2e8f0",
-          300: "#cbd5e1",
-          400: "#94a3b8",
-          500: "#64748b",
-          600: "#475569",
-          700: "#334155",
-          800: "#1e293b",
-          900: "#0f172a",
-          950: "#020617",
+          50: "#f5f2eb",
+          100: "#f5f2eb",
+          200: "#c9c5bc",
+          300: "#c9c5bc",
+          400: "#807a6e",
+          500: "#807a6e",
+          600: "#4f4a42",
+          700: "#2a2a30",
+          800: "#1e1e25",
+          900: "#111114",
+          950: "#0a0a0b",
+        },
+        // 'emerald'/'red' remapeados a mint/rust para P&L del código previo.
+        emerald: {
+          200: "#9ff0d2",
+          300: "#76ecc3",
+          400: "#5ee9b5",
+          500: "#5ee9b5",
+          600: "#3dcc9a",
+        },
+        red: {
+          200: "#ffb3a6",
+          300: "#ff8f7d",
+          400: "#ff6b5b",
+          500: "#e87a5b",
+          600: "#cc5a3e",
         },
       },
       fontFamily: {
-        mono: ["var(--font-plex-mono)", "var(--font-geist-mono)", "ui-monospace", "monospace"],
-        sans: ["var(--font-plex-mono)", "var(--font-geist-mono)", "ui-monospace", "monospace"],
+        sans: ["var(--font-geist-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
+        serif: ["var(--font-instrument-serif)", "serif"],
       },
       borderRadius: {
         none: "0",
-        sm: "0",
-        DEFAULT: "0",
-        md: "0",
-        lg: "2px",
-        xl: "2px",
-        "2xl": "2px",
-        "3xl": "2px",
+        sm: "4px",
+        DEFAULT: "6px",
+        md: "6px",
+        lg: "8px",
+        xl: "10px",
+        "2xl": "14px",
+        "3xl": "18px",
         full: "9999px",
+      },
+      boxShadow: {
+        card: "0 4px 12px rgba(0,0,0,0.2)",
       },
       animation: {
         "fade-in": "fadeIn 0.15s linear",
