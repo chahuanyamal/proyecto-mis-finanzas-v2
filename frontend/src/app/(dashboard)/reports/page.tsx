@@ -5,30 +5,21 @@ import type { AnnualReport } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { usePeriodStore } from "@/stores/period";
 import { Download, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { formatMoney } from "@/lib/format";
 import { useEffect, useMemo, useState } from "react";
 
 function currentYear(): number {
   return new Date().getFullYear();
 }
 
-function formatMoney(value: string, currency: string): string {
-  const n = Number(value);
-  if (Number.isNaN(n)) return value;
-  return new Intl.NumberFormat("es-CL", { style: "currency", currency, maximumFractionDigits: currency === "CLP" ? 0 : 2 }).format(n);
-}
-
 export default function ReportsPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [year, setYear] = useState(currentYear());
   const currency = usePeriodStore((s) => s.currency);
   const [report, setReport] = useState<AnnualReport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/reports"); }, [hasVerified, router, user]);
   useEffect(() => {
     if (!user) return;
     let cancelled = false;

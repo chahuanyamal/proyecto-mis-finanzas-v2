@@ -18,7 +18,10 @@ class TestTransactions:
     async def test_list_transactions_empty(self, auth_client: AsyncClient) -> None:
         resp = await auth_client.get("/api/v1/transactions")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+        assert data["page"] == 1
 
     async def test_create_transaction(self, auth_client: AsyncClient) -> None:
         acc_id = await self._create_account(auth_client)
@@ -109,7 +112,7 @@ class TestTransactions:
         await other_auth_client.post("/api/v1/transactions", json={
             "account_id": acc2, "date": "2026-05-01", "description": "Ajena", "amount": "200", "currency": "CLP", "movement_type": "expense"})
         resp = await auth_client.get("/api/v1/transactions")
-        descriptions = [t["description"] for t in resp.json()]
+        descriptions = [t["description"] for t in resp.json()["items"]]
         assert "Mia" in descriptions
         assert "Ajena" not in descriptions
 
@@ -123,7 +126,7 @@ class TestTransactions:
         await auth_client.post("/api/v1/transactions", json={
             "account_id": acc2, "date": "2026-05-02", "description": "Acc2", "amount": "200", "currency": "CLP", "movement_type": "expense"})
         filtered = await auth_client.get(f"/api/v1/transactions?account_id={acc1}")
-        assert len(filtered.json()) == 1
+        assert len(filtered.json()["items"]) == 1
 
     async def test_filter_by_date_range(self, auth_client: AsyncClient) -> None:
         acc_id = await self._create_account(auth_client)
@@ -132,8 +135,9 @@ class TestTransactions:
         await auth_client.post("/api/v1/transactions", json={
             "account_id": acc_id, "date": "2026-06-01", "description": "New", "amount": "200", "currency": "CLP", "movement_type": "expense"})
         filtered = await auth_client.get("/api/v1/transactions?start_date=2026-03-01&end_date=2026-12-31")
-        assert len(filtered.json()) == 1
-        assert filtered.json()[0]["description"] == "New"
+        items = filtered.json()["items"]
+        assert len(items) == 1
+        assert items[0]["description"] == "New"
 
     async def test_export_excel(self, auth_client: AsyncClient) -> None:
         acc_id = await self._create_account(auth_client)

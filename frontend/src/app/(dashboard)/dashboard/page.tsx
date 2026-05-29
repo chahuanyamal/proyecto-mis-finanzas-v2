@@ -2,45 +2,12 @@
 
 import { dashboardApi } from "@/lib/api";
 import type { DashboardSummary, DashboardTrends } from "@/lib/api-types";
+import { asNumber, formatMoney, plain, formatPercent, monthDayLabel, monthShortUpper, catColor } from "@/lib/format";
 import { usePeriodStore } from "@/stores/period";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const CAT_SW = ["var(--acc)", "var(--rust)", "var(--gold)", "var(--blue)", "var(--violet)", "var(--acc)"];
 const CHIP_TONES = ["", "r", "g", "b", "v", "k"] as const;
-
-function asNumber(value: string | null | undefined): number {
-  return Number(value ?? 0);
-}
-
-function formatMoney(value: string | number, currency = "CLP"): string {
-  return new Intl.NumberFormat("es-CL", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: currency === "CLP" ? 0 : 2,
-  }).format(typeof value === "number" ? value : asNumber(value));
-}
-
-function plain(value: string | number, currency = "CLP"): string {
-  return formatMoney(value, currency).replace(/[^\d.,\-]/g, "");
-}
-
-function formatPercent(value: string | null): string {
-  if (value === null) return "sin base";
-  const number = asNumber(value);
-  return `${number > 0 ? "+" : ""}${number.toFixed(1)}%`;
-}
-
-function monthDayLabel(iso: string): string {
-  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
-  const mon = new Date(y, m - 1, d).toLocaleDateString("es-CL", { month: "short" }).replace(".", "");
-  return `${d} ${mon}`;
-}
-
-function monthShortUpper(ym: string): string {
-  const [y, m] = ym.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("es-CL", { month: "short" }).replace(".", "").toUpperCase();
-}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -355,7 +322,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex flex-col gap-[13px]">
             {(summary?.category_expenses ?? []).slice(0, 6).map((c, i) => {
-              const swColor = c.category_color || CAT_SW[i % CAT_SW.length];
+              const swColor = c.category_color || catColor(i);
               const pct = (asNumber(c.amount) / topCategoryTotal) * 100;
               const totalExp = Math.max(1, asNumber(summary?.expenses));
               const sharePct = Math.round((asNumber(c.amount) / totalExp) * 100);

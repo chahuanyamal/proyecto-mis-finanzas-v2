@@ -4,7 +4,7 @@ import uuid
 import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -13,6 +13,12 @@ from app.models.mixins import TimestampMixin
 
 class Transaction(Base, TimestampMixin):
     __tablename__ = "transactions"
+    __table_args__ = (
+        Index("ix_transactions_user_date", "user_id", "date"),
+        Index("ix_transactions_user_category", "user_id", "category_id"),
+        Index("ix_transactions_account_date", "account_id", "date"),
+        Index("ix_transactions_user_movement", "user_id", "movement_type"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True, default=uuid.uuid4

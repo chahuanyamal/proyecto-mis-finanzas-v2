@@ -3,12 +3,11 @@
 import { accountsApi, categoriesApi, tagsApi, transactionsApi } from "@/lib/api";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Account, Category, SplitPayload, Tag, Transaction, TransactionFilters, TransactionPayload, TransactionSummary } from "@/lib/api-types";
+import { chipColor, dayLabel, formatMoney, plain, today } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { Download, Loader2, Save, Sparkles, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-function today(): string { return new Date().toISOString().slice(0, 10); }
 function iso(d: Date): string { return d.toISOString().slice(0, 10); }
 const emptyForm: TransactionPayload = { account_id: "", category_id: null, date: today(), description: "", amount: "0", currency: "CLP", movement_type: "expense", notes: "" };
 
@@ -25,25 +24,10 @@ const PRESETS: { key: string; label: string; range: () => { start: string; end: 
   { key: "all", label: "Todo", range: () => ({ start: "", end: "" }) },
 ];
 
-function fmt(value: number | string, currency = "CLP"): string {
-  const n = Number(value);
-  if (Number.isNaN(n)) return String(value);
-  return new Intl.NumberFormat("es-CL", { style: "currency", currency, maximumFractionDigits: 0 }).format(n);
-}
-function dayLabel(date: string): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-}
-// Swatch tonal por categoría — color estable derivado del nombre (paleta Bóveda).
-const CHIP_PALETTE = ["var(--acc)", "var(--gold)", "var(--rust)", "var(--violet)", "var(--blue)", "var(--text-2)"];
-function chipColor(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return CHIP_PALETTE[h % CHIP_PALETTE.length];
-}
+
 
 export default function TransactionsPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [summary, setSummary] = useState<TransactionSummary | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -63,9 +47,6 @@ export default function TransactionsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
 
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/transactions"); }, [hasVerified, router, user]);
-
   const baseParams = useCallback((): TransactionFilters => {
     const p: TransactionFilters = {};
     if (filters.account_id) p.account_id = filters.account_id;
@@ -81,10 +62,10 @@ export default function TransactionsPage() {
     setIsLoading(true);
     try {
       const [list, sum] = await Promise.all([
-        transactionsApi.list({ ...baseParams(), limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
+        transactionsApi.list({ ...baseParams(), page: page + 1, page_size: PAGE_SIZE }),
         transactionsApi.summary(baseParams()),
       ]);
-      setTransactions(list.data);
+      setTransactions(list.data.items);
       setSummary(sum.data);
     } catch { setError("No se pudieron cargar las transacciones."); }
     finally { setIsLoading(false); }
@@ -207,7 +188,7 @@ export default function TransactionsPage() {
           <div className="sub">
             {summary?.total_count ?? transactions.length} movimientos
             {" · saldo neto "}
-            <strong style={{ color: net >= 0 ? "var(--acc)" : "var(--rust)" }}>{net >= 0 ? "+" : ""}{fmt(net, primaryCurrency)}</strong>
+            <strong style={{ color: net >= 0 ? "var(--acc)" : "var(--rust)" }}>{net >= 0 ? "+" : ""}{formatMoney(net, primaryCurrency)}</strong>
           </div>
         </div>
         <div className="actions">
@@ -230,22 +211,22 @@ export default function TransactionsPage() {
       <div className="strip">
         <div className="kpi">
           <div className="lbl"><span className="sw" />Ingresos</div>
-          <div className="val"><span className="cu">{primaryCurrency}</span>{fmt(income, primaryCurrency).replace(/[^\d.,-]/g, "")}</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span>{plain(income, primaryCurrency)}</div>
           <div className="sub">período seleccionado</div>
         </div>
         <div className="kpi r">
           <div className="lbl"><span className="sw" />Egresos</div>
-          <div className="val"><span className="cu">{primaryCurrency}</span>{fmt(expense, primaryCurrency).replace(/[^\d.,-]/g, "")}</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span>{plain(expense, primaryCurrency)}</div>
           <div className="sub">{summary?.uncategorized_count ?? 0} sin categoría</div>
         </div>
         <div className="kpi on">
           <div className="lbl"><span className="sw" />Saldo neto</div>
-          <div className="val"><span className="cu">{primaryCurrency}</span><span className={net >= 0 ? "pos" : "neg"}>{net >= 0 ? "+" : "−"}{fmt(Math.abs(net), primaryCurrency).replace(/[^\d.,-]/g, "")}</span></div>
+          <div className="val"><span className="cu">{primaryCurrency}</span><span className={net >= 0 ? "pos" : "neg"}>{net >= 0 ? "+" : "−"}{plain(Math.abs(net), primaryCurrency)}</span></div>
           <div className="sub">{income > 0 ? `${Math.round((net / income) * 100)}% del ingreso` : "—"}</div>
         </div>
         <div className="kpi g">
           <div className="lbl"><span className="sw" />Promedio diario</div>
-          <div className="val"><span className="cu">{primaryCurrency}</span>{fmt(expense / dayCount, primaryCurrency).replace(/[^\d.,-]/g, "")}</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span>{plain(expense / dayCount, primaryCurrency)}</div>
           <div className="sub">{dayCount} días observados</div>
         </div>
       </div>
@@ -281,7 +262,7 @@ export default function TransactionsPage() {
         <div className="panel" style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 14px", marginBottom: 10, background: "rgba(94,233,181,0.06)", borderColor: "rgba(94,233,181,0.18)" }}>
           <span style={{ width: 14, height: 14, borderRadius: 3, background: "var(--acc)", color: "var(--bg)", display: "grid", placeItems: "center", fontSize: 10 }}>✓</span>
           <strong className="mono" style={{ color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{selected.size} seleccionados</strong>
-          <span className="mono" style={{ color: "var(--text-3)" }}>· neto {fmt(selectedTotal, primaryCurrency)}</span>
+          <span className="mono" style={{ color: "var(--text-3)" }}>· neto {formatMoney(selectedTotal, primaryCurrency)}</span>
           <div style={{ flex: 1 }} />
           <select className="filt" style={{ appearance: "auto" }} value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
             <option value="">Sin categoría</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -315,7 +296,7 @@ export default function TransactionsPage() {
                     <span className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)" }}>{dayLabel(date)}</span>
                     <span style={{ flex: 1, height: 1, background: "var(--line-2)" }} />
                     <span className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>
-                      {rows.length} mov · <span style={{ color: dayNet >= 0 ? "var(--acc)" : "var(--rust)" }}>{dayNet >= 0 ? "+" : "−"}{fmt(Math.abs(dayNet), primaryCurrency)}</span>
+                      {rows.length} mov · <span style={{ color: dayNet >= 0 ? "var(--acc)" : "var(--rust)" }}>{dayNet >= 0 ? "+" : "−"}{formatMoney(Math.abs(dayNet), primaryCurrency)}</span>
                     </span>
                   </div>
                   {rows.map((tx) => {
@@ -360,7 +341,7 @@ export default function TransactionsPage() {
                           {tx.account?.name ?? "—"}
                         </div>
                         <div className="mono r" style={{ fontSize: 14, fontWeight: 500, color: tx.movement_type === "income" ? "var(--acc)" : "var(--text)" }}>
-                          {tx.movement_type === "income" ? "+" : "−"}{fmt(tx.amount, tx.currency).replace(/[^\d.,-]/g, "")}
+                          {tx.movement_type === "income" ? "+" : "−"}{plain(tx.amount, tx.currency)}
                         </div>
                         <div className="r" onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                           <ConfirmButton title="Eliminar transacción" description="Esta transacción será eliminada definitivamente." confirmLabel="Eliminar" onConfirm={() => remove(tx.id)} className="btn danger"><Trash2 size={13} /></ConfirmButton>

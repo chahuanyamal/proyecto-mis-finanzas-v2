@@ -3,19 +3,15 @@
 import { auditApi } from "@/lib/api";
 import type { AuditEvent } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function AuditPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [items, setItems] = useState<AuditEvent[]>([]);
   const [entityType, setEntityType] = useState("");
   const [limit, setLimit] = useState(200);
   const [error, setError] = useState("");
 
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/audit"); }, [hasVerified, router, user]);
   useEffect(() => { if (user) auditApi.list({ entity_type: entityType || undefined, limit }).then((r) => setItems(r.data)).catch(() => setError("No se pudo cargar auditoría.")); }, [entityType, limit, user]);
 
   return (

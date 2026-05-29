@@ -24,6 +24,8 @@ from app.modules.audit.service import log_audit
 from app.modules.parsers.registry import ParserRegistry
 from app.modules.statements.parser import StatementParseError, parse_statement_pdf
 from app.modules.statements.schemas import (
+    BulkUploadRequest,
+    BulkUploadResult,
     ParserOption,
     PreviewRowUpdate,
     PreviewSummary,
@@ -422,3 +424,115 @@ async def upload_statement(
     preview = await create_preview(account_id, parser_key, file, db, current_user)
     response = await confirm_preview(preview.id, db, current_user)
     return StatementUploadResponse(uploaded_file=response.uploaded_file, imported_transactions=response.imported_transactions)
+
+
+@router.post("/bulk-upload", response_model=BulkUploadResult, status_code=status.HTTP_201_CREATED)
+async def bulk_upload_statements(
+    files: list[UploadFile] = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> BulkUploadResult:
+    """Sube múltiples archivos PDF de cartolas y los importa automáticamente.
+
+    Cada archivo se asocia a una cuenta según el naming:
+    - filename contiene el id de cuenta: `cuenta_<id>_nombre.pdf`
+    - O se toma la primera cuenta del usuario como default.
+    """
+    account_cache: dict[str, Account] = {}
+    results: list[dict] = []
+    successful = 0
+    failed = 0
+
+    for file in files:
+        if file.content_type != "application/pdf":
+            results.append({"filename": file.filename, "status": "error", "message": "No es PDF"})
+            failed += 1
+            continue
+
+        account: Account | None = None
+        filename_lower = file.filename.lower()
+
+        m = __import__("re").search(r"cuenta[_\s-]?([0-9a-f-]{36})", filename_lower)
+        if m:
+            acc_id_str = m.group(1)
+            try:
+                acc_id = uuid.UUID(acc_id_str)
+                if acc_id_str in account_cache:
+                    account = account_cache[acc_id_str]
+                else:
+                    result = await db.execute(select(Account).where(Account.id == acc_id, Account.user_id == current_user.id))
+                    account = result.scalar_one_or_none()
+                    if account:
+                        account_cache[acc_id_str] = account
+            except ValueError:
+                pass
+
+        if account is None:
+            all_accounts = await db.execute(select(Account).where(Account.user_id == current_user.id).order_by(Account.created_at.asc()))
+            account = all_accounts.scalar_one_or_none()
+
+        if account is None:
+            results.append({"filename": file.filename, "status": "error", "message": "No se encontró cuenta"})
+            failed += 1
+            continue
+
+        path = _store_upload(current_user, file)
+        try:
+            path.write_bytes(await file.read())
+            parsed = parse_statement_pdf(path, parser_key=None)
+            uploaded_file = UploadedFile(
+                account_id=account.id,
+                user_id=current_user.id,
+                filename=file.filename or path.name,
+                bank_detected=parsed["bank_detected"],
+                opening_balance=Decimal(parsed["opening_balance"]) if parsed.get("opening_balance") is not None else None,
+                closing_balance=Decimal(parsed["closing_balance"]) if parsed.get("closing_balance") is not None else None,
+                status="processed",
+            )
+            db.add(uploaded_file)
+            await db.flush()
+
+            rows = parsed["rows"]
+            imported = 0
+            for row in rows:
+                db.add(Transaction(
+                    uploaded_file_id=uploaded_file.id,
+                    account_id=account.id,
+                    user_id=current_user.id,
+                    currency=account.currency,
+                    date=datetime.date.fromisoformat(row["date"]),
+                    description=row["description"],
+                    amount=Decimal(str(row["amount"])),
+                    movement_type=row["movement_type"],
+                ))
+                imported += 1
+
+            if rows:
+                dates = [datetime.date.fromisoformat(row["date"]) for row in rows]
+                uploaded_file.period_start = min(dates)
+                uploaded_file.period_end = max(dates)
+
+            await log_audit(db, user_id=current_user.id, action="bulk_upload", entity_type="statement", entity_id=str(uploaded_file.id), metadata={"filename": file.filename, "imported_transactions": imported})
+            await db.commit()
+
+            results.append({
+                "filename": file.filename,
+                "status": "success",
+                "uploaded_file_id": str(uploaded_file.id),
+                "account_id": str(account.id),
+                "account_name": account.name,
+                "imported_transactions": imported,
+                "bank_detected": parsed["bank_detected"],
+            })
+            successful += 1
+
+        except StatementParseError as exc:
+            results.append({"filename": file.filename, "status": "error", "message": f"Parse error: {exc}"})
+            failed += 1
+            await db.rollback()
+        except Exception as exc:
+            results.append({"filename": file.filename, "status": "error", "message": f"Error: {exc}"})
+            failed += 1
+            await db.rollback()
+
+    return BulkUploadResult(total=len(files), successful=successful, failed=failed, results=results)

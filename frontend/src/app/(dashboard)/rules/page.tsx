@@ -11,7 +11,6 @@ import type {
 } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 const clpFormat = new Intl.NumberFormat("es-CL", {
@@ -54,8 +53,7 @@ function operatorLabel(op: string): string {
 }
 
 export default function RulesPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [rules, setRules] = useState<CategoryRule[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState<CategoryRulePayload>(emptyForm);
@@ -67,13 +65,6 @@ export default function RulesPage() {
   const previewSeq = useRef(0);
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [applyResult, setApplyResult] = useState<{ id: string; result: RuleApplyResult } | null>(null);
-
-  useEffect(() => {
-    if (!hasVerified) void fetchMe();
-  }, [fetchMe, hasVerified]);
-  useEffect(() => {
-    if (hasVerified && !user) router.replace("/login?next=/rules");
-  }, [hasVerified, router, user]);
 
   async function loadData() {
     setIsLoading(true);

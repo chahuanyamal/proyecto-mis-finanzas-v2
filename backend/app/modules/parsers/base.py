@@ -1,14 +1,54 @@
 """Interfaz abstracta para todos los parsers de cartolas bancarias."""
 import io
-import logging
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import TypedDict
 
-logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+class TransactionDict(TypedDict, total=False):
+    date: date
+    description: str
+    amount: Decimal
+    movement_type: str
+    currency: str
+    balance: Decimal | None
+    raw_description: str
+    reference: str
+
+
+class RawDataDict(TypedDict, total=False):
+    bank: str
+    filename: str
+    page_count: int
+    extraction_method: str
+    text_length: int
+    tables_found: int
+
+
+class PeriodSegmentDict(TypedDict, total=False):
+    period_start: date
+    period_end: date
+    transactions: list[TransactionDict]
+    total_credit: Decimal
+    total_debit: Decimal
+    opening_balance: Decimal | None
+    closing_balance: Decimal | None
+
+
+class FingerprintDict(TypedDict, total=False):
+    producer: str
+    creator: str
+    page_count: int
+    first_page_table_count: int
+    first_page_word_count: int
+    has_images: bool
 
 
 @dataclass
@@ -22,8 +62,8 @@ class ParseResult:
     closing_balance: Decimal | None = None
     total_credit: Decimal | None = None
     total_debit: Decimal | None = None
-    transactions: list[dict[str, Any]] = field(default_factory=list)
-    raw_data: dict[str, Any] = field(default_factory=dict)
+    transactions: list[TransactionDict] = field(default_factory=list)
+    raw_data: RawDataDict = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     # True para cuentas de pasivo (tarjetas de crédito). En éstas el cuadre
     # sigue la ecuación  opening + débitos - créditos = closing  porque
@@ -35,7 +75,7 @@ class ParseResult:
     # Multi-período: segmentos por período (en memoria, NO se serializan a JSONB).
     # Cada item: {period_start, period_end, transactions: [...], total_credit, total_debit}.
     multi_period: bool = False
-    period_segments: list[dict[str, Any]] = field(default_factory=list)
+    period_segments: list[PeriodSegmentDict] = field(default_factory=list)
 
 
 _SPANISH_MONTHS: dict[str, str] = {
@@ -70,7 +110,7 @@ class BaseParser(ABC):
         self,
         content: bytes,
         text: str,
-        statement: Any,
+        statement: object,
         subformat_hint: str | None = None,
     ) -> ParseResult:
         """Extrae transacciones y metadata del archivo.
@@ -210,14 +250,14 @@ class BaseParser(ABC):
             logger.debug("No se pudo contar páginas del PDF: %s", exc)
             return 0
 
-    def _pdf_structural_fingerprint(self, content: bytes) -> dict[str, Any]:
+    def _pdf_structural_fingerprint(self, content: bytes) -> FingerprintDict:
         """Extrae características estructurales del PDF para mejorar la detección.
 
         Devuelve: producer, creator, page_count, first_page_table_count,
         first_page_word_count, has_images.
         Útil en can_parse() como señal adicional cuando el texto es ambiguo.
         """
-        result: dict[str, Any] = {
+        result: FingerprintDict = {
             "producer": "",
             "creator": "",
             "page_count": 0,

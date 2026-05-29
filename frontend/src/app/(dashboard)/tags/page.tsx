@@ -5,7 +5,6 @@ import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Tag, TagPayload } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const SWATCHES = ["#5EE9B5", "#E6B85C", "#E87A5B", "#B49CFF", "#7AB0FF", "#FF6B9D", "#807A6E"];
@@ -13,8 +12,7 @@ const SWATCHES = ["#5EE9B5", "#E6B85C", "#E87A5B", "#B49CFF", "#7AB0FF", "#FF6B9
 const emptyForm: TagPayload = { name: "", color: "#5EE9B5" };
 
 export default function TagsPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [tags, setTags] = useState<Tag[]>([]);
   const [form, setForm] = useState<TagPayload>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -22,13 +20,6 @@ export default function TagsPage() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [colorFilter, setColorFilter] = useState<"all" | "color" | "nocolor">("all");
-
-  useEffect(() => {
-    if (!hasVerified) void fetchMe();
-  }, [fetchMe, hasVerified]);
-  useEffect(() => {
-    if (hasVerified && !user) router.replace("/login?next=/tags");
-  }, [hasVerified, router, user]);
 
   async function loadData() {
     setIsLoading(true);

@@ -2,31 +2,17 @@
 
 import { budgetsApi, categoriesApi, dashboardApi } from "@/lib/api";
 import type { Budget, BudgetPayload, Category, MonthlyDashboard } from "@/lib/api-types";
+import { asNumber, plain, shiftMonth, monthLabel, today } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-function currentMonth(): string { return new Date().toISOString().slice(0, 7); }
+function currentMonth(): string { return today().slice(0, 7); }
 const emptyForm: BudgetPayload = { category_id: "", month: currentMonth(), amount: "100000", alert_at_percent: 80 };
 
 const MARK_COLORS = ["#5EE9B5", "#E87A5B", "#E6B85C", "#7AB0FF", "#B49CFF", "#807A6E"];
-const MONTH_NAMES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-
-function asNumber(value: string | null | undefined): number { return Number(value ?? 0); }
-function fmt(value: number): string { return new Intl.NumberFormat("es-CL").format(Math.round(value)); }
-function shiftMonth(month: string, delta: number): string {
-  const [y, m] = month.split("-").map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return d.toISOString().slice(0, 7);
-}
-function monthLabel(month: string): { name: string; year: string } {
-  const [y, m] = month.split("-").map(Number);
-  return { name: MONTH_NAMES[m - 1] ?? month, year: String(y) };
-}
 
 export default function BudgetsPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [monthly, setMonthly] = useState<MonthlyDashboard | null>(null);
@@ -34,9 +20,6 @@ export default function BudgetsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
-
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/presupuestos"); }, [hasVerified, router, user]);
 
   async function loadData(month = form.month) {
     try {
@@ -102,7 +85,7 @@ export default function BudgetsPage() {
         <div>
           <h1>Presupuestos <span className="serif">— {mLabel.name} {mLabel.year}</span></h1>
           <div className="sub">
-            {budgets.length} presupuestos · gastaste <strong>${fmt(totalSpent)}</strong> de <strong>${fmt(totalBudgeted)}</strong>
+            {budgets.length} presupuestos · gastaste <strong>${plain(totalSpent)}</strong> de <strong>${plain(totalBudgeted)}</strong>
             {exceededCount > 0 ? <> · <strong style={{ color: "var(--rust)" }}>{exceededCount} excedido{exceededCount === 1 ? "" : "s"}</strong></> : null}
             {" "}· día {dayOfMonth} de {daysInMonth}
           </div>
@@ -144,15 +127,15 @@ export default function BudgetsPage() {
         <div style={{ marginLeft: "auto", display: "flex", gap: 24 }}>
           <div className="mono" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
             <span className="label">Presupuestado</span>
-            <span className="num" style={{ fontSize: 16, fontWeight: 500 }}>${fmt(totalBudgeted)}</span>
+            <span className="num" style={{ fontSize: 16, fontWeight: 500 }}>${plain(totalBudgeted)}</span>
           </div>
           <div className="mono" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
             <span className="label">Gastado</span>
-            <span className="num" style={{ fontSize: 16, fontWeight: 500, color: totalSpent > totalBudgeted ? "var(--rust)" : "var(--acc)" }}>${fmt(totalSpent)}</span>
+            <span className="num" style={{ fontSize: 16, fontWeight: 500, color: totalSpent > totalBudgeted ? "var(--rust)" : "var(--acc)" }}>${plain(totalSpent)}</span>
           </div>
           <div className="mono" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
             <span className="label">Restante</span>
-            <span className="num" style={{ fontSize: 16, fontWeight: 500, color: totalRemaining < 0 ? "var(--rust)" : "var(--acc)" }}>${fmt(totalRemaining)}</span>
+            <span className="num" style={{ fontSize: 16, fontWeight: 500, color: totalRemaining < 0 ? "var(--rust)" : "var(--acc)" }}>${plain(totalRemaining)}</span>
           </div>
         </div>
       </div>
@@ -173,7 +156,7 @@ export default function BudgetsPage() {
         <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-3)" }}>
           <span>$0</span>
           <span><strong style={{ color: "var(--text)" }}>Hoy · día {dayOfMonth}</strong></span>
-          <span>${fmt(totalBudgeted)} · {daysInMonth} {mLabel.name.slice(0, 3)}</span>
+          <span>${plain(totalBudgeted)} · {daysInMonth} {mLabel.name.slice(0, 3)}</span>
         </div>
       </div>
 
@@ -220,9 +203,9 @@ export default function BudgetsPage() {
                 <div style={{ position: "absolute", top: -2, bottom: -2, width: 2, background: "var(--text-2)", opacity: 0.5, left: `${Math.min(monthPace, 100)}%` }} />
               </div>
               <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-3)" }}>
-                <span><span style={{ color: "var(--text)" }}>${fmt(spent)}</span> / ${fmt(amount)}</span>
+                <span><span style={{ color: "var(--text)" }}>${plain(spent)}</span> / ${plain(amount)}</span>
                 <span style={{ color: remaining < 0 ? "var(--rust)" : "var(--acc)" }}>
-                  {remaining < 0 ? `$${fmt(-remaining)} sobre el límite` : `$${fmt(remaining)} restantes`}
+                  {remaining < 0 ? `$${plain(-remaining)} sobre el límite` : `$${plain(remaining)} restantes`}
                 </span>
               </div>
             </div>

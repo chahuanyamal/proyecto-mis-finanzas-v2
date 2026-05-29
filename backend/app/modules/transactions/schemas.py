@@ -132,3 +132,10 @@ class FlagIn(BaseModel):
 
 class TagsIn(BaseModel):
     tag_ids: list[uuid.UUID] = []
+
+
+class PaginatedTransactions(BaseModel):
+    items: list[TransactionOut]
+    total: int
+    page: int
+    page_size: int

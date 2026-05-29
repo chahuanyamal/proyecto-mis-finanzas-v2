@@ -2,18 +2,12 @@
 
 import { categoriesApi, rulesApi, transactionsApi } from "@/lib/api";
 import type { Category, Transaction } from "@/lib/api-types";
+import { formatMoney, plain } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2, Sparkles } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
 type QueueTab = "all" | "uncategorized" | "flagged";
-
-function fmt(value: string, currency = "CLP"): string {
-  const n = Number(value);
-  if (Number.isNaN(n)) return value;
-  return new Intl.NumberFormat("es-CL", { style: "currency", currency, maximumFractionDigits: currency === "CLP" ? 0 : 2 }).format(n);
-}
 
 function suggestedPattern(description: string): string {
   const clean = description
@@ -38,8 +32,7 @@ const kbdStyle: CSSProperties = {
 };
 
 export default function ReviewPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [uncategorized, setUncategorized] = useState<Transaction[]>([]);
   const [flagged, setFlagged] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -53,24 +46,21 @@ export default function ReviewPage() {
   const [cursor, setCursor] = useState(0);
   const [createRule, setCreateRule] = useState(true);
 
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/review"); }, [hasVerified, router, user]);
-
   const load = useCallback(async () => {
     setIsLoading(true);
     setError("");
     try {
       const [unc, flg, cat] = await Promise.all([
-        transactionsApi.list({ only_uncategorized: true, exclude_internal: true, exclude_duplicates: true, limit: 200 }),
-        transactionsApi.list({ only_flagged: true, limit: 100 }),
+        transactionsApi.list({ only_uncategorized: true, exclude_internal: true, exclude_duplicates: true, page_size: 200 }),
+        transactionsApi.list({ only_flagged: true, page_size: 100 }),
         categoriesApi.list(),
       ]);
-      setUncategorized(unc.data);
-      setFlagged(flg.data);
+      setUncategorized(unc.data.items);
+      setFlagged(flg.data.items);
       setCategories(cat.data);
       setDrafts((current) => {
         const next = { ...current };
-        for (const tx of unc.data) {
+        for (const tx of unc.data.items) {
           if (!next[tx.id]) next[tx.id] = { categoryId: "", pattern: suggestedPattern(tx.description) };
         }
         return next;
@@ -257,7 +247,7 @@ export default function ReviewPage() {
             >
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 5 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginRight: 8 }}>{tx.description}</div>
-                <div className="mono" style={{ fontSize: 13, fontWeight: 500, color: tx.movement_type === "income" ? "var(--acc)" : "var(--text)" }}>{tx.movement_type === "income" ? "+" : "−"}{fmt(tx.amount, tx.currency).replace(/[^\d.,-]/g, "")}</div>
+                <div className="mono" style={{ fontSize: 13, fontWeight: 500, color: tx.movement_type === "income" ? "var(--acc)" : "var(--text)" }}>{tx.movement_type === "income" ? "+" : "−"}{plain(tx.amount, tx.currency)}</div>
               </div>
               <div className="mono" style={{ fontSize: 10, color: "var(--text-3)", display: "flex", gap: 10, letterSpacing: "0.04em" }}>
                 <span>{tx.date}</span><span>·</span><span>{(tx.account?.name ?? "CUENTA").toUpperCase()}</span>
@@ -311,7 +301,7 @@ export default function ReviewPage() {
 
             <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 32, rowGap: 14, margin: "24px 0 28px", padding: "22px 0", borderTop: "1px solid var(--line-2)", borderBottom: "1px solid var(--line-2)" }}>
               <dt className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)", paddingTop: 4 }}>Monto</dt>
-              <dd style={{ fontSize: 14, color: "var(--text)" }}><span style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-0.025em" }}>{current.movement_type === "income" ? "+" : "−"}{fmt(current.amount, current.currency)}</span> <span style={{ color: "var(--text-3)" }}>{current.currency}</span></dd>
+              <dd style={{ fontSize: 14, color: "var(--text)" }}><span style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-0.025em" }}>{current.movement_type === "income" ? "+" : "−"}{formatMoney(current.amount, current.currency)}</span> <span style={{ color: "var(--text-3)" }}>{current.currency}</span></dd>
               <dt className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)", paddingTop: 4 }}>Fecha</dt>
               <dd style={{ fontSize: 14, color: "var(--text)" }}>{new Date(`${current.date}T00:00:00`).toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })}</dd>
               <dt className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)", paddingTop: 4 }}>Cuenta</dt>

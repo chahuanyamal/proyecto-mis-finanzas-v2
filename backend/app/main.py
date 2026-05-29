@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import async_session_factory, engine
+from app.core.logging import get_logger, setup_logging
 from app.modules.accounts.router import router as accounts_router
 from app.modules.audit.router import router as audit_router
 from app.modules.auth.router import router as auth_router
@@ -28,6 +29,9 @@ from app.modules.settings.router import router as settings_router
 from app.modules.statements.router import router as statements_router
 from app.modules.tags.router import router as tags_router
 from app.modules.transactions.router import router as transactions_router
+from app.modules.ofx.router import router as ofx_router
+from app.modules.ai.router import router as ai_router
+from app.modules.debt.router import router as debt_router
 
 
 @asynccontextmanager
@@ -37,6 +41,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    setup_logging()
+    logger = get_logger("app")
+    logger.info("app_starting", env=settings.APP_ENV, debug=settings.DEBUG)
     app = FastAPI(
         title="Mis Finanzas V2",
         version="0.1.0",
@@ -71,6 +78,9 @@ def create_app() -> FastAPI:
     app.include_router(search_router)
     app.include_router(reports_router)
     app.include_router(reconciliation_router)
+    app.include_router(ofx_router)
+    app.include_router(ai_router)
+    app.include_router(debt_router)
 
     @app.get("/health")
     async def health():

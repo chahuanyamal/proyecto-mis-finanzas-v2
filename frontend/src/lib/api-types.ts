@@ -343,8 +343,15 @@ export interface TransactionFilters {
   only_flagged?: boolean;
   exclude_internal?: boolean;
   exclude_duplicates?: boolean;
-  limit?: number;
-  offset?: number;
+  page?: number;
+  page_size?: number;
+}
+
+export interface PaginatedTransactions {
+  items: Transaction[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export interface Goal {
@@ -608,4 +615,127 @@ export interface ReconciliationSummary {
   accounts: ReconciliationAccount[];
   ok_count: number;
   warning_count: number;
+}
+
+export interface OfxPreview {
+  account_id: string;
+  account_type: string | null;
+  bank_detected: string;
+  currency: string;
+  period_start: string | null;
+  period_end: string | null;
+  opening_balance: string | null;
+  closing_balance: string | null;
+  row_count: number;
+  total_income: string;
+  total_expenses: string;
+  rows: Array<{
+    date: string;
+    description: string;
+    amount: string;
+    movement_type: "income" | "expense";
+  }>;
+}
+
+export interface AiSuggestion {
+  transaction_id: string;
+  date: string;
+  description: string;
+  amount: string;
+  movement_type: "income" | "expense";
+  suggested_category_id: string;
+  suggested_category_name: string | null;
+  confidence: number;
+}
+
+export interface AiSuggestionResult {
+  count: number;
+  suggestions: AiSuggestion[];
+}
+
+export interface DebtAccount {
+  id: string;
+  name: string;
+  account_type: string;
+  currency: string;
+  balance: string;
+  institution: string | null;
+}
+
+export interface DebtPayoffStrategy {
+  strategy: string;
+  description: string;
+  extra_payment: string;
+  months_to_payoff: number;
+  total_interest: string;
+  total_paid: string;
+  payoff_date: string;
+  schedule: Array<{
+    month: number;
+    date: string;
+    payment: string;
+    principal: string;
+    interest: string;
+    balance: string;
+  }>;
+}
+
+export interface DebtCompareResult {
+  account_name: string;
+  current_balance: string;
+  annual_rate: string;
+  minimum_payment: string;
+  strategies: DebtPayoffStrategy[];
+}
+
+export interface DebtPayoffResult {
+  account_name: string;
+  current_balance: string;
+  interest_rate: string;
+  strategy: string;
+  projection: {
+    months_to_payoff: number;
+    total_interest_paid: string;
+    total_amount_paid: string;
+    payoff_date: string;
+    monthly_schedule: Array<{
+      month: number;
+      date: string;
+      payment: string;
+      principal: string;
+      interest: string;
+      balance: string;
+    }>;
+  };
+}
+
+export interface DebtSnowballResult {
+  accounts: Array<{
+    name: string;
+    balance: string;
+    rate: string;
+    months_to_payoff: number;
+    total_interest: string;
+    payoff_date: string;
+    order: number;
+  }>;
+  total_debt: string;
+  extra_monthly: string;
+  recommended_order: string[];
+}
+
+export interface BulkUploadResult {
+  total: number;
+  successful: number;
+  failed: number;
+  results: Array<{
+    filename: string;
+    status: string;
+    uploaded_file_id?: string;
+    account_id?: string;
+    account_name?: string;
+    imported_transactions?: number;
+    bank_detected?: string;
+    message?: string;
+  }>;
 }

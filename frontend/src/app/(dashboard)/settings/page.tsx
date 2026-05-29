@@ -3,7 +3,6 @@
 import { authApi, settingsApi } from "@/lib/api";
 import type { Settings } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 type TabKey =
@@ -32,8 +31,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 ];
 
 export default function SettingsPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [fullName, setFullName] = useState("");
   const [currency, setCurrency] = useState("CLP");
@@ -55,9 +53,6 @@ export default function SettingsPage() {
   const [reportYear, setReportYear] = useState("2026 · YTD");
   const [concilRange, setConcilRange] = useState("12 meses");
   const [userFilter, setUserFilter] = useState("Todos · 1");
-
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/settings"); }, [hasVerified, router, user]);
 
   useEffect(() => {
     if (!user) return;

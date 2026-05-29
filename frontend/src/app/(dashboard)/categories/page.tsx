@@ -3,23 +3,17 @@
 import { categoriesApi } from "@/lib/api";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Category, CategoryPayload } from "@/lib/api-types";
+import { initials } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const emptyForm: CategoryPayload = { name: "", parent_id: null, color: "#5EE9B5", icon: "tag" };
 
 const SWATCHES = ["#5EE9B5", "#E6B85C", "#E87A5B", "#B49CFF", "#7AB0FF", "#FF6B9D", "#807A6E"];
 
-function initials(name: string): string {
-  const cleaned = name.trim();
-  return cleaned ? cleaned[0].toUpperCase() : "·";
-}
-
 export default function CategoriesPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState<CategoryPayload>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -28,14 +22,6 @@ export default function CategoriesPage() {
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<"all" | "mine" | "system">("all");
-
-  useEffect(() => {
-    if (!hasVerified) void fetchMe();
-  }, [fetchMe, hasVerified]);
-
-  useEffect(() => {
-    if (hasVerified && !user) router.replace("/login?next=/categories");
-  }, [hasVerified, router, user]);
 
   async function loadData() {
     setIsLoading(true);

@@ -4,7 +4,6 @@ import { reconciliationApi } from "@/lib/api";
 import type { ReconciliationSummary } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { usePeriodStore } from "@/stores/period";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 function money(value: string, currency: string) {
@@ -13,8 +12,7 @@ function money(value: string, currency: string) {
 }
 
 export default function ReconciliationPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const currency = usePeriodStore((s) => s.currency);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -22,8 +20,6 @@ export default function ReconciliationPage() {
   const [data, setData] = useState<ReconciliationSummary | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/reconciliation"); }, [hasVerified, router, user]);
   useEffect(() => {
     if (user) {
       reconciliationApi.summary({ currency, tolerance, start_date: startDate || undefined, end_date: endDate || undefined })

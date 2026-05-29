@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import cached
 from app.core.database import get_db
 from app.models.account import Account
 from app.models.budget import Budget
@@ -191,6 +192,7 @@ async def monthly_dashboard(
 
 
 @router.get("/summary")
+@cached(ttl_seconds=120)
 async def dashboard_summary(
     period: Literal["mtd", "30d", "ytd", "12m"] = "mtd",
     currency: str | None = Query(default=None, max_length=3),
@@ -311,6 +313,7 @@ async def dashboard_summary(
 
 
 @router.get("/trends")
+@cached(ttl_seconds=300)
 async def dashboard_trends(
     months: int = Query(default=12, ge=1, le=24),
     currency: str | None = Query(default=None, max_length=3),

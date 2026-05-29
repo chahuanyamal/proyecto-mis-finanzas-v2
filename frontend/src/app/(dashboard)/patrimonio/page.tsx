@@ -2,6 +2,7 @@
 
 import { patrimonioApi } from "@/lib/api";
 import type { NetWorth, PatrimonioAccountTrend, PatrimonioCompare, PatrimonioHistory, PatrimonioProjection } from "@/lib/api-types";
+import { asNumber, formatPercent, initials, monthShortUpper, plain } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { usePeriodStore } from "@/stores/period";
 import { Loader2 } from "lucide-react";
@@ -17,40 +18,14 @@ const TYPE_LABELS: Record<string, string> = {
 
 const MARK_TONES = ["green", "gold", "v", ""] as const;
 
-function n(value: string | null | undefined): number {
-  return Number(value ?? 0);
-}
-
-function plain(value: number, currency: string): string {
-  if (Number.isNaN(value)) return "—";
-  return new Intl.NumberFormat("es-CL", { maximumFractionDigits: currency === "CLP" ? 0 : 2 }).format(value);
-}
-
 function signed(value: number, currency: string): string {
   return `${value >= 0 ? "+" : "−"}$${plain(Math.abs(value), currency)}`;
-}
-
-function formatPercent(value: string | null): string {
-  if (value === null) return "sin base";
-  const amount = Number(value);
-  return `${amount > 0 ? "+" : ""}${amount.toFixed(1)}%`;
-}
-
-function monthShort(ym: string): string {
-  const [y, m] = ym.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("es-CL", { month: "short" }).replace(".", "").toUpperCase();
 }
 
 function snapDate(ym: string): string {
   const [y, m] = ym.split("-").map(Number);
   const last = new Date(y, m, 0);
-  return `${last.getDate()} ${monthShort(ym)} ${y}`;
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
+  return `${last.getDate()} ${monthShortUpper(ym)} ${y}`;
 }
 
 export default function PatrimonioPage() {
@@ -98,13 +73,13 @@ export default function PatrimonioPage() {
   const historyPoints = history?.history ?? [];
   const compareTotal = compare?.totals.find((item) => item.currency === currency) ?? null;
 
-  const total = n(data?.totals_by_currency.find((t) => t.currency === currency)?.total);
-  const assets = useMemo(() => visibleAccounts.reduce((acc, a) => acc + Math.max(0, n(a.balance)), 0), [visibleAccounts]);
-  const liabilities = useMemo(() => visibleAccounts.reduce((acc, a) => acc + Math.min(0, n(a.balance)), 0), [visibleAccounts]);
+  const total = asNumber(data?.totals_by_currency.find((t) => t.currency === currency)?.total);
+  const assets = useMemo(() => visibleAccounts.reduce((acc, a) => acc + Math.max(0, asNumber(a.balance)), 0), [visibleAccounts]);
+  const liabilities = useMemo(() => visibleAccounts.reduce((acc, a) => acc + Math.min(0, asNumber(a.balance)), 0), [visibleAccounts]);
 
   // Evolution chart geometry from history points.
   const chart = useMemo(() => {
-    const pts = historyPoints.map((p) => n(p.value));
+    const pts = historyPoints.map((p) => asNumber(p.value));
     if (pts.length === 0) return null;
     const max = Math.max(...pts, 1);
     const min = Math.min(...pts, 0);
@@ -123,7 +98,7 @@ export default function PatrimonioPage() {
 
   // Snapshots: most recent first, with month-over-month delta.
   const snapshots = useMemo(() => {
-    const pts = historyPoints.map((p) => ({ month: p.month, value: n(p.value) }));
+    const pts = historyPoints.map((p) => ({ month: p.month, value: asNumber(p.value) }));
     const maxAbs = Math.max(1, ...pts.map((p) => Math.abs(p.value)));
     return [...pts].reverse().slice(0, 6).map((p, idx, arr) => {
       const prev = arr[idx + 1];
@@ -133,8 +108,8 @@ export default function PatrimonioPage() {
     });
   }, [historyPoints]);
 
-  const compMax = Math.max(1, ...visibleAccounts.map((a) => Math.abs(n(a.balance))));
-  const firstHistory = historyPoints.length ? n(historyPoints[0].value) : 0;
+  const compMax = Math.max(1, ...visibleAccounts.map((a) => Math.abs(asNumber(a.balance))));
+  const firstHistory = historyPoints.length ? asNumber(historyPoints[0].value) : 0;
   const yearPct = firstHistory !== 0 ? ((total - firstHistory) / Math.abs(firstHistory)) * 100 : null;
 
   // Editorial volume line: "Vol. XXVI · N° V · Mayo 2026"
@@ -153,11 +128,11 @@ export default function PatrimonioPage() {
 
   // Best month-over-month gain across history.
   const bestMonth = useMemo(() => {
-    const pts = historyPoints.map((p) => ({ month: p.month, value: n(p.value) }));
+    const pts = historyPoints.map((p) => ({ month: p.month, value: asNumber(p.value) }));
     let best: { label: string; delta: number } | null = null;
     for (let i = 1; i < pts.length; i++) {
       const d = pts[i].value - pts[i - 1].value;
-      if (best === null || d > best.delta) best = { label: monthShort(pts[i].month).toLowerCase(), delta: d };
+      if (best === null || d > best.delta) best = { label: monthShortUpper(pts[i].month).toLowerCase(), delta: d };
     }
     return best;
   }, [historyPoints]);
@@ -165,8 +140,8 @@ export default function PatrimonioPage() {
   // Evolution footer summary cells.
   const evoFoot = useMemo(() => {
     if (historyPoints.length === 0) return null;
-    const prev = historyPoints.length >= 2 ? n(historyPoints[historyPoints.length - 2].value) : null;
-    return { first: firstHistory, prev, prevLabel: historyPoints.length >= 2 ? monthShort(historyPoints[historyPoints.length - 2].month).toLowerCase() : "" };
+    const prev = historyPoints.length >= 2 ? asNumber(historyPoints[historyPoints.length - 2].value) : null;
+    return { first: firstHistory, prev, prevLabel: historyPoints.length >= 2 ? monthShortUpper(historyPoints[historyPoints.length - 2].month).toLowerCase() : "" };
   }, [historyPoints, firstHistory]);
 
   return (
@@ -218,7 +193,7 @@ export default function PatrimonioPage() {
                   <span><span style={{ color: yearPct >= 0 ? "var(--acc)" : "var(--rust)" }}>{yearPct >= 0 ? "▲" : "▼"} {yearPct >= 0 ? "+" : ""}{yearPct.toFixed(1)}%</span> · 12m</span>
                 ) : null}
                 {compareTotal ? (
-                  <span><span style={{ color: n(compareTotal.delta) >= 0 ? "var(--acc)" : "var(--rust)" }}>{signed(n(compareTotal.delta), currency)}</span> · vs. mes anterior</span>
+                  <span><span style={{ color: asNumber(compareTotal.delta) >= 0 ? "var(--acc)" : "var(--rust)" }}>{signed(asNumber(compareTotal.delta), currency)}</span> · vs. mes anterior</span>
                 ) : null}
                 {bestMonth ? (
                   <span className="serif" style={{ fontSize: 15, color: "var(--text-3)" }}>
@@ -276,7 +251,7 @@ export default function PatrimonioPage() {
                 ) : null}
                 <g fill="#807A6E" fontFamily="Geist Mono" fontSize="10" textAnchor="middle">
                   {historyPoints.map((p, i) => (
-                    <text key={p.month} x={chart.xy[i].x} y="246">{monthShort(p.month)}</text>
+                    <text key={p.month} x={chart.xy[i].x} y="246">{monthShortUpper(p.month)}</text>
                   ))}
                 </g>
                 <g fontFamily="Geist Mono" fontSize="11" fill="#C9C5BC">
@@ -325,7 +300,7 @@ export default function PatrimonioPage() {
               </div>
               <div className="flex flex-col">
                 {visibleAccounts.map((account, i) => {
-                  const bal = n(account.balance);
+                  const bal = asNumber(account.balance);
                   const neg = bal < 0;
                   const pct = (Math.abs(bal) / compMax) * 100;
                   const tone = neg ? "red" : MARK_TONES[i % MARK_TONES.length];
@@ -423,7 +398,7 @@ export default function PatrimonioPage() {
               <div className="overflow-auto px-4 pb-4">
                 {(() => {
                   const all = [...projection.history, ...projection.projection];
-                  const vals = all.map((p) => n(p.value));
+                  const vals = all.map((p) => asNumber(p.value));
                   const max = Math.max(...vals, 1);
                   const min = Math.min(...vals, 0);
                   const span = max - min || 1;
@@ -431,8 +406,8 @@ export default function PatrimonioPage() {
                   const stepX = all.length > 1 ? (right - left) / (all.length - 1) : 0;
                   const xy = all.map((p, i) => {
                     const x = left + i * stepX;
-                    const y = bottom - ((n(p.value) - min) / span) * (bottom - top);
-                    return { x, y, value: n(p.value), isProj: i >= projection.history.length, lower: "lower" in p ? n((p as { lower: string }).lower) : null, upper: "upper" in p ? n((p as { upper: string }).upper) : null, month: p.month };
+                    const y = bottom - ((asNumber(p.value) - min) / span) * (bottom - top);
+                    return { x, y, value: asNumber(p.value), isProj: i >= projection.history.length, lower: "lower" in p ? asNumber((p as { lower: string }).lower) : null, upper: "upper" in p ? asNumber((p as { upper: string }).upper) : null, month: p.month };
                   });
 
                   const mainLine = xy.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(0)},${p.y.toFixed(0)}`).join(" ");
@@ -470,7 +445,7 @@ export default function PatrimonioPage() {
                       ) : null}
                       <g fill="#807A6E" fontFamily="Geist Mono" fontSize="10" textAnchor="middle">
                         {xy.filter((_, i) => i % Math.max(1, Math.floor(xy.length / 8)) === 0).map((p) => (
-                          <text key={p.month} x={p.x} y="196">{monthShort(p.month)}</text>
+                          <text key={p.month} x={p.x} y="196">{monthShortUpper(p.month)}</text>
                         ))}
                       </g>
                     </svg>
@@ -494,8 +469,8 @@ export default function PatrimonioPage() {
               </div>
               <div className="flex flex-col">
                 {(trend?.accounts ?? []).map((account) => {
-                  const max = Math.max(1, ...account.points.map((p) => Math.abs(n(p.balance))));
-                  const up = n(account.delta) >= 0;
+                  const max = Math.max(1, ...account.points.map((p) => Math.abs(asNumber(p.balance))));
+                  const up = asNumber(account.delta) >= 0;
                   return (
                     <div key={account.id} className="grid items-center border-b py-3 last:border-0" style={{ gridTemplateColumns: "1fr 160px auto", columnGap: 18, borderColor: "var(--line-2)" }}>
                       <div>
@@ -504,13 +479,13 @@ export default function PatrimonioPage() {
                       </div>
                       <div className="flex h-8 items-end gap-1">
                         {account.points.map((point) => (
-                          <span key={point.month} className="flex-1 rounded-[1px]" style={{ background: "var(--line-2)", height: `${Math.max(8, (Math.abs(n(point.balance)) / max) * 100)}%` }} />
+                          <span key={point.month} className="flex-1 rounded-[1px]" style={{ background: "var(--line-2)", height: `${Math.max(8, (Math.abs(asNumber(point.balance)) / max) * 100)}%` }} />
                         ))}
                       </div>
                       <div className="text-right" style={{ minWidth: 130 }}>
-                        <div className="mono num text-[14px] font-medium">${plain(n(account.current_balance), account.currency)}</div>
+                        <div className="mono num text-[14px] font-medium">${plain(asNumber(account.current_balance), account.currency)}</div>
                         <div className="mono mt-0.5 text-[11px]" style={{ color: up ? "var(--acc)" : "var(--rust)" }}>
-                          {signed(n(account.delta), account.currency)} · {formatPercent(account.delta_percent)}
+                          {signed(asNumber(account.delta), account.currency)} · {formatPercent(account.delta_percent)}
                         </div>
                       </div>
                     </div>

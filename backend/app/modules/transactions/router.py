@@ -37,6 +37,7 @@ from app.modules.transactions.schemas import (
     CurrencyTotals,
     FlagIn,
     NotesIn,
+    PaginatedTransactions,
     SplitIn,
     SplitOut,
     TagsIn,
@@ -168,7 +169,7 @@ def _apply_filters(
     return query
 
 
-@router.get("", response_model=list[TransactionOut])
+@router.get("", response_model=PaginatedTransactions)
 async def list_transactions(
     account_id: uuid.UUID | None = None,
     category_id: uuid.UUID | None = None,
@@ -182,14 +183,14 @@ async def list_transactions(
     only_flagged: bool = False,
     exclude_internal: bool = False,
     exclude_duplicates: bool = False,
-    limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> list[TransactionOut]:
-    query = select(Transaction).join(Account).options(*_LOAD_OPTIONS).where(Account.user_id == current_user.id)
-    query = _apply_filters(
-        query,
+) -> PaginatedTransactions:
+    base_query = select(Transaction).join(Account).where(Account.user_id == current_user.id)
+    filtered = _apply_filters(
+        base_query,
         account_id=account_id,
         category_id=category_id,
         statement_id=statement_id,
@@ -203,9 +204,19 @@ async def list_transactions(
         exclude_internal=exclude_internal,
         exclude_duplicates=exclude_duplicates,
     )
-    query = query.order_by(Transaction.date.desc(), Transaction.created_at.desc()).offset(offset).limit(limit)
-    result = await db.execute(query)
-    return [_to_out(tx) for tx in result.scalars().all()]
+    count_query = select(func.count()).select_from(filtered.subquery())
+    total = int((await db.execute(count_query)).scalar() or 0)
+
+    offset = (page - 1) * page_size
+    data_query = (
+        filtered.options(*_LOAD_OPTIONS)
+        .order_by(Transaction.date.desc(), Transaction.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    result = await db.execute(data_query)
+    items = [_to_out(tx) for tx in result.scalars().all()]
+    return PaginatedTransactions(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/summary", response_model=TransactionSummary)

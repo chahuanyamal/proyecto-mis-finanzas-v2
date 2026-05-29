@@ -3,9 +3,9 @@
 import { accountsApi, patrimonioApi } from "@/lib/api";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Account, AccountPayload, Institution, PatrimonioAccountTrend } from "@/lib/api-types";
+import { asNumber, formatMoney, plain, initials, compactMoney } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const emptyForm: AccountPayload = {
@@ -37,27 +37,6 @@ const typeTone: Record<Account["account_type"], string> = {
   cash: "neutral",
   credit: "red",
 };
-
-function asNumber(value: string | null | undefined): number {
-  return Number(value ?? 0);
-}
-
-function formatMoney(value: string | number, currency = "CLP"): string {
-  const n = typeof value === "number" ? value : asNumber(value);
-  return new Intl.NumberFormat("es-CL", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: currency === "CLP" ? 0 : 2,
-  }).format(n);
-}
-
-function initials(name: string): string {
-  const cleaned = name.trim();
-  if (!cleaned) return "··";
-  const parts = cleaned.split(/\s+/);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
 
 const toneStyles: Record<string, { background: string; color: string }> = {
   green: { background: "rgba(94,233,181,0.12)", color: "var(--acc)" },
@@ -119,17 +98,8 @@ function Sparkline({ trend }: { trend: AccountTrend }) {
   );
 }
 
-const compactMoney = (value: number): string => {
-  const abs = Math.abs(value);
-  const sign = value < 0 ? "-" : "+";
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1).replace(".", ",")}M`;
-  if (abs >= 1_000) return `${sign}$${Math.round(abs / 1_000)}K`;
-  return `${sign}$${Math.round(abs)}`;
-};
-
 export default function AccountsPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [accountTrends, setAccountTrends] = useState<AccountTrend[]>([]);
@@ -141,18 +111,6 @@ export default function AccountsPage() {
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | Account["account_type"]>("all");
-
-  useEffect(() => {
-    if (!hasVerified) {
-      void fetchMe();
-    }
-  }, [fetchMe, hasVerified]);
-
-  useEffect(() => {
-    if (hasVerified && !user) {
-      router.replace("/login?next=/accounts");
-    }
-  }, [hasVerified, router, user]);
 
   async function loadData() {
     setIsLoading(true);
@@ -440,7 +398,7 @@ export default function AccountsPage() {
           </div>
           <div className="val">
             <span className="cu">CLP</span>
-            <span className="pos">{formatMoney(allAssetsTotal).replace(/[^\d.,\-]/g, "")}</span>
+            <span className="pos">{plain(allAssetsTotal)}</span>
           </div>
           <div className="sub">
             {accounts.filter((a) => a.account_type !== "credit").length} cuentas · {bankCount} bancos
@@ -453,7 +411,7 @@ export default function AccountsPage() {
           </div>
           <div className="val">
             <span className="cu">CLP</span>
-            <span className="neg">{formatMoney(allLiabilitiesTotal).replace(/[^\d.,\-]/g, "")}</span>
+            <span className="neg">{plain(allLiabilitiesTotal)}</span>
           </div>
           <div className="sub">
             {accounts.filter((a) => a.account_type === "credit").length} tarjetas
@@ -467,7 +425,7 @@ export default function AccountsPage() {
           <div className="val">
             <span className="cu">CLP</span>
             <span className={netWorth >= 0 ? "pos" : "neg"}>
-              {formatMoney(netWorth).replace(/[^\d.,\-]/g, "")}
+              {plain(netWorth)}
             </span>
           </div>
           <div className="sub">activos − pasivos</div>

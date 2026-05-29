@@ -4,6 +4,7 @@ import { statementsApi, transactionsApi } from "@/lib/api";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { StatementQuality, StatementUpload, Transaction } from "@/lib/api-types";
+import { plain } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { ArrowLeft, Download, Loader2, RefreshCw, RotateCcw } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
@@ -11,17 +12,11 @@ import { useEffect, useMemo, useState } from "react";
 
 type Flow = "all" | "income" | "expense";
 
-function fmt(value: string, currency = "CLP"): string {
-  const n = Number(value);
-  if (Number.isNaN(n)) return value;
-  return new Intl.NumberFormat("es-CL", { style: "currency", currency, maximumFractionDigits: 0 }).format(n);
-}
-
 export default function StatementDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params.id;
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [meta, setMeta] = useState<StatementUpload | null>(null);
   const [quality, setQuality] = useState<StatementQuality | null>(null);
   const [rows, setRows] = useState<Transaction[]>([]);
@@ -31,19 +26,16 @@ export default function StatementDetailPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace(`/login?next=/statements/${id}`); }, [hasVerified, router, user, id]);
-
   async function load() {
     setIsLoading(true);
     try {
       const [detail, list, qualityRes] = await Promise.all([
         statementsApi.detail(id),
-        transactionsApi.list({ statement_id: id, limit: 500 }),
+        transactionsApi.list({ statement_id: id, page_size: 500 }),
         statementsApi.quality(id),
       ]);
       setMeta(detail.data.uploaded_file);
-      setRows(list.data);
+      setRows(list.data.items);
       setQuality(qualityRes.data);
     } catch { setMessage("No se pudo cargar la cartola."); }
     finally { setIsLoading(false); }
@@ -117,12 +109,12 @@ export default function StatementDetailPage() {
         </div>
         <div className="kpi">
           <div className="lbl"><span className="sw" />Abonos</div>
-          <div className="val"><span className="cu">CLP</span><span className="pos">{fmt(String(totalIncome)).replace(/[^\d.,-]/g, "")}</span></div>
+          <div className="val"><span className="cu">CLP</span><span className="pos">{plain(String(totalIncome))}</span></div>
           <div className="sub">{quality?.income_count ?? 0} mov.</div>
         </div>
         <div className="kpi r">
           <div className="lbl"><span className="sw" />Cargos</div>
-          <div className="val"><span className="cu">CLP</span>{fmt(String(totalExpense)).replace(/[^\d.,-]/g, "")}</div>
+          <div className="val"><span className="cu">CLP</span>{plain(String(totalExpense))}</div>
           <div className="sub">{quality?.expense_count ?? 0} mov.</div>
         </div>
         <div className="kpi g">
@@ -188,7 +180,7 @@ export default function StatementDetailPage() {
                   <span className={`chip${tx.category ? "" : " empty"}`}><span className="sw" />{tx.category?.name ?? "Sin asignar"}</span>
                 </div>
                 <div className="mono r" style={{ fontSize: 14, fontWeight: 500, color: tx.movement_type === "income" ? "var(--acc)" : "var(--text)" }}>
-                  {tx.movement_type === "income" ? "+" : "−"}{fmt(tx.amount, tx.currency).replace(/[^\d.,-]/g, "")}
+                  {tx.movement_type === "income" ? "+" : "−"}{plain(tx.amount, tx.currency)}
                 </div>
               </div>
             ))}
@@ -197,7 +189,7 @@ export default function StatementDetailPage() {
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "60px 110px 1fr 200px 140px", gap: 14, padding: "11px 16px", borderTop: "1px solid var(--line)", background: "var(--bg)" }}>
                 <div /><div /><div /><div className="mono r" style={{ fontSize: 11, color: "var(--text-3)" }}>Neto filtrado</div>
-                <div className="mono r" style={{ fontSize: 14, fontWeight: 500, color: filteredSum >= 0 ? "var(--acc)" : "var(--rust)" }}>{filteredSum >= 0 ? "+" : "−"}{fmt(String(Math.abs(filteredSum))).replace(/[^\d.,-]/g, "")}</div>
+                <div className="mono r" style={{ fontSize: 14, fontWeight: 500, color: filteredSum >= 0 ? "var(--acc)" : "var(--rust)" }}>{filteredSum >= 0 ? "+" : "−"}{plain(String(Math.abs(filteredSum)))}</div>
               </div>
             )}
           </>

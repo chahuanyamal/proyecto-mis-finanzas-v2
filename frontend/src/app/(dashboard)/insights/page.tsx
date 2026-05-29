@@ -2,15 +2,11 @@
 
 import { transactionsApi } from "@/lib/api";
 import type { CategoryAggregate, MonthAggregate } from "@/lib/api-types";
+import { formatMoney } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2, TrendingDown, TrendingUp } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-function fmt(value: number, currency = "CLP"): string {
-  if (Number.isNaN(value)) return "—";
-  return new Intl.NumberFormat("es-CL", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
-}
 function monthRange(ym: string): { start: string; end: string } {
   const [y, m] = ym.split("-").map(Number);
   return { start: `${ym}-01`, end: new Date(y, m, 0).toISOString().slice(0, 10) };
@@ -22,16 +18,12 @@ function ymOffset(offset: number): string {
 }
 
 export default function InsightsPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [series, setSeries] = useState<MonthAggregate[]>([]);
   const [catThis, setCatThis] = useState<CategoryAggregate[]>([]);
   const [catPrev, setCatPrev] = useState<CategoryAggregate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/insights"); }, [hasVerified, router, user]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -106,7 +98,7 @@ export default function InsightsPage() {
               <div className="lbl">Tasa de ahorro · este mes</div>
               <div className="txt">
                 Estás ahorrando <strong>{savingsRate.toFixed(0)}%</strong> de tus ingresos. Ingreso{" "}
-                <strong>{fmt(tIncome)}</strong> · gasto <strong>{fmt(tExpense)}</strong>.
+                <strong>{formatMoney(tIncome)}</strong> · gasto <strong>{formatMoney(tExpense)}</strong>.
               </div>
             </div>
             <div className="num" style={{ fontSize: 28, fontWeight: 300, color: savingsRate >= 0 ? "var(--acc)" : "var(--rust)" }}>
@@ -117,15 +109,15 @@ export default function InsightsPage() {
           <div className="strip">
             <div className="kpi r">
               <div className="lbl"><span className="sw" />Gasto este mes</div>
-              <div className="val num">{fmt(tExpense)}</div>
+              <div className="val num">{formatMoney(tExpense)}</div>
             </div>
             <div className="kpi">
               <div className="lbl"><span className="sw" />Ingreso este mes</div>
-              <div className="val num">{fmt(tIncome)}</div>
+              <div className="val num">{formatMoney(tIncome)}</div>
             </div>
             <div className="kpi v">
               <div className="lbl"><span className="sw" />Gasto medio · 12m</div>
-              <div className="val num">{fmt(avgExpense)}</div>
+              <div className="val num">{formatMoney(avgExpense)}</div>
             </div>
             <div className="kpi g">
               <div className="lbl"><span className="sw" />Tasa de ahorro</div>
@@ -142,8 +134,8 @@ export default function InsightsPage() {
               {series.map((m) => (
                 <div key={m.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
                   <div style={{ display: "flex", width: "100%", alignItems: "flex-end", justifyContent: "center", gap: 2, height: 150 }}>
-                    <div style={{ width: "45%", borderRadius: "2px 2px 0 0", background: "var(--acc)", height: `${(Number(m.income) / maxBar) * 100}%` }} title={`Ingreso ${fmt(Number(m.income))}`} />
-                    <div style={{ width: "45%", borderRadius: "2px 2px 0 0", background: "var(--rust)", height: `${(Number(m.expense) / maxBar) * 100}%` }} title={`Gasto ${fmt(Number(m.expense))}`} />
+                    <div style={{ width: "45%", borderRadius: "2px 2px 0 0", background: "var(--acc)", height: `${(Number(m.income) / maxBar) * 100}%` }} title={`Ingreso ${formatMoney(Number(m.income))}`} />
+                    <div style={{ width: "45%", borderRadius: "2px 2px 0 0", background: "var(--rust)", height: `${(Number(m.expense) / maxBar) * 100}%` }} title={`Gasto ${formatMoney(Number(m.expense))}`} />
                   </div>
                   <span className="mono" style={{ fontSize: 9, color: "var(--text-3)" }}>{m.month.slice(5)}</span>
                 </div>
@@ -162,7 +154,7 @@ export default function InsightsPage() {
                   <div key={c.name}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
                       <span>{c.name}</span>
-                      <span className="mono" style={{ color: "var(--text-2)" }}>{fmt(c.value)}</span>
+                      <span className="mono" style={{ color: "var(--text-2)" }}>{formatMoney(c.value)}</span>
                     </div>
                     <div style={{ height: 4, width: "100%", borderRadius: 2, background: "var(--bg-3)", overflow: "hidden" }}>
                       <div style={{ height: "100%", background: "var(--acc)", borderRadius: 2, width: `${c.pct}%` }} />
@@ -183,7 +175,7 @@ export default function InsightsPage() {
                     <span>{v.name}</span>
                     <span className="mono" style={{ display: "flex", alignItems: "center", gap: 6, color: v.diff > 0 ? "var(--rust)" : "var(--acc)" }}>
                       {v.diff > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                      {v.diff > 0 ? "+" : ""}{fmt(v.diff)}
+                      {v.diff > 0 ? "+" : ""}{formatMoney(v.diff)}
                     </span>
                   </div>
                 ))}

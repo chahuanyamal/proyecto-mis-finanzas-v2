@@ -2,9 +2,9 @@
 
 import { goalsApi } from "@/lib/api";
 import type { Goal, GoalContribution, GoalDepositPayload, GoalPayload } from "@/lib/api-types";
+import { asNumber, plain } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { addMonths } from "date-fns";
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const emptyForm: GoalPayload = { name: "", target_amount: "1000000", current_amount: "0", currency: "CLP", target_date: "" };
@@ -12,8 +12,6 @@ const emptyDeposit: GoalDepositPayload = { amount: "10000", date: new Date().toI
 
 const MARK_TONES = ["green", "gold", "violet", "blue"] as const;
 
-function asNumber(value: string | null | undefined): number { return Number(value ?? 0); }
-function fmt(value: number): string { return new Intl.NumberFormat("es-CL").format(Math.round(value)); }
 function shortDate(iso: string): string {
   const d = parseDate(iso);
   if (!d) return iso;
@@ -41,8 +39,7 @@ function monthlyRate(list: GoalContribution[]): number | null {
 }
 
 export default function GoalsPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [contributions, setContributions] = useState<Record<string, GoalContribution[]>>({});
   const [form, setForm] = useState<GoalPayload>(emptyForm);
@@ -51,9 +48,6 @@ export default function GoalsPage() {
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [openDeposit, setOpenDeposit] = useState<string | null>(null);
-
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/goals"); }, [hasVerified, router, user]);
 
   async function load() {
     try {
@@ -179,7 +173,7 @@ export default function GoalsPage() {
       ? (etaDate.getTime() <= targetDate.getTime() ? "var(--acc)" : "var(--rust)")
       : "var(--text-2)";
     const etaLabel = remaining <= 0 ? "✓ logrado" : etaDate ? shortDate(etaDate.toISOString().slice(0, 10)) : "—";
-    const rateLabel = rate && rate > 0 ? `$${fmt(rate)}/mes` : "—";
+    const rateLabel = rate && rate > 0 ? `$${plain(rate)}/mes` : "—";
 
     // Historial de aportes inline (mini bar chart) por mes — solo featured.
     const sparkMonths: { key: string; total: number }[] = (() => {
@@ -238,10 +232,10 @@ export default function GoalsPage() {
         <div style={{ padding: "0 26px 22px" }} onClick={() => edit(goal)}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
             <div className="num" style={{ fontSize: featured ? 44 : 30, fontWeight: featured ? 200 : 300, letterSpacing: "-0.02em" }}>
-              <span className="mono" style={{ fontSize: 13, color: "var(--text-3)", marginRight: 6 }}>{goal.currency}</span>{fmt(current)}
+              <span className="mono" style={{ fontSize: 13, color: "var(--text-3)", marginRight: 6 }}>{goal.currency}</span>{plain(current)}
             </div>
             <div className="mono" style={{ fontSize: 12, color: "var(--text-3)", textAlign: "right" }}>
-              META<strong style={{ color: "var(--text-2)", display: "block", fontSize: 16, marginTop: 4, fontWeight: 500 }}>${fmt(target)}</strong>
+              META<strong style={{ color: "var(--text-2)", display: "block", fontSize: 16, marginTop: 4, fontWeight: 500 }}>${plain(target)}</strong>
             </div>
           </div>
           <div style={{ position: "relative", marginBottom: 14 }}>
@@ -264,7 +258,7 @@ export default function GoalsPage() {
               <span className="label" style={{ display: "block", marginBottom: 8, letterSpacing: "0.1em" }}>Aportes · últimos {sparkMonths.length} meses</span>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 48 }}>
                 {sparkMonths.map((s) => (
-                  <div key={s.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }} title={`${s.key}: $${fmt(s.total)}`}>
+                  <div key={s.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }} title={`${s.key}: $${plain(s.total)}`}>
                     <div
                       style={{
                         width: "100%", borderRadius: "3px 3px 0 0",
@@ -283,7 +277,7 @@ export default function GoalsPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, padding: "14px 26px", borderTop: "1px solid var(--line-2)", background: "rgba(0,0,0,0.15)" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <span className="label">Faltan</span>
-            <span className="num" style={{ fontSize: 13, fontWeight: 500 }}>{remaining > 0 ? `$${fmt(remaining)}` : "✓ logrado"}</span>
+            <span className="num" style={{ fontSize: 13, fontWeight: 500 }}>{remaining > 0 ? `$${plain(remaining)}` : "✓ logrado"}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <span className="label">A este ritmo</span>
@@ -309,7 +303,7 @@ export default function GoalsPage() {
         <div>
           <h1>Tus <span className="serif">metas</span></h1>
           <div className="sub">
-            {active} activa{active === 1 ? "" : "s"} · {completed} completada{completed === 1 ? "" : "s"} · ahorrado <strong style={{ color: "var(--acc)" }}>${fmt(totalSaved)}</strong> de ${fmt(totalTarget)}
+            {active} activa{active === 1 ? "" : "s"} · {completed} completada{completed === 1 ? "" : "s"} · ahorrado <strong style={{ color: "var(--acc)" }}>${plain(totalSaved)}</strong> de ${plain(totalTarget)}
           </div>
         </div>
         <div className="actions">
@@ -333,12 +327,12 @@ export default function GoalsPage() {
         </div>
         <div className="kpi">
           <div className="lbl"><span className="sw" />Total objetivo</div>
-          <div className="val"><span className="cu">{primaryCurrency}</span>{fmt(totalTarget)}</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span>{plain(totalTarget)}</div>
           <div className="sub">monto agregado de metas</div>
         </div>
         <div className="kpi g">
           <div className="lbl"><span className="sw" />Aportado total</div>
-          <div className="val"><span className="cu">{primaryCurrency}</span>{fmt(totalSaved)}</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span>{plain(totalSaved)}</div>
           <div className="sub">{allContributions.length} aporte{allContributions.length === 1 ? "" : "s"}</div>
         </div>
         <div className="kpi v">
@@ -366,7 +360,7 @@ export default function GoalsPage() {
       <div className="panel">
         <div className="panel-head">
           <h3>Historial de aportes</h3>
-          <span className="meta">{allContributions.length} movimientos · ${fmt(historyTotal)} total</span>
+          <span className="meta">{allContributions.length} movimientos · ${plain(historyTotal)} total</span>
         </div>
         {historyRows.length === 0 ? (
           <p className="mono" style={{ fontSize: 12, color: "var(--text-3)" }}>Aún no registras aportes.</p>
@@ -376,7 +370,7 @@ export default function GoalsPage() {
               <div key={row.id} style={{ display: "grid", gridTemplateColumns: "100px 1fr auto", gap: 18, alignItems: "center", padding: "11px 0", borderBottom: "1px solid var(--line-2)" }}>
                 <span className="mono" style={{ color: "var(--text-3)", fontSize: 10, letterSpacing: "0.06em" }}>{shortDate(row.date)}</span>
                 <span style={{ fontSize: 13 }}>Aporte a <strong style={{ fontWeight: 500 }}>{row.goalName}</strong>{row.note ? <span className="mono" style={{ color: "var(--text-3)", fontSize: 11 }}> · {row.note}</span> : null}</span>
-                <span className="num" style={{ fontWeight: 500, color: "var(--acc)", textAlign: "right" }}>+${fmt(asNumber(row.amount))}</span>
+                <span className="num" style={{ fontWeight: 500, color: "var(--acc)", textAlign: "right" }}>+${plain(asNumber(row.amount))}</span>
               </div>
             ))}
           </div>

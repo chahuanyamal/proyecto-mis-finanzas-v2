@@ -34,7 +34,6 @@ _IMPORT_MAX_ROWS = 5000
 _IMPORT_ALLOWED = {
     "accounts": frozenset({
         "name", "account_type", "currency", "balance", "institution_id",
-        "is_active", "is_investment", "notes",
     }),
     "categories": frozenset({"name", "color", "icon", "parent_id"}),
     "tags": frozenset({"name", "color"}),
@@ -121,7 +120,6 @@ async def export_user_backup(
         select(Transaction)
         .where(Transaction.user_id == uid)
         .order_by(Transaction.date.desc())
-        .limit(10000)
     )
     data["transactions"] = [_row_to_dict(r, Transaction) for r in tx_rows.scalars().all()]
 
@@ -143,6 +141,56 @@ async def export_user_backup(
     return StreamingResponse(
         buf,
         media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/backup/json")
+async def export_user_backup_json(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Exporta todos los datos del usuario como JSON puro (sin ZIP)."""
+    uid = current_user.id
+    data: dict[str, list[dict]] = {}
+
+    for model, key in [
+        (Account, "accounts"),
+        (Category, "categories"),
+        (Tag, "tags"),
+        (Budget, "budgets"),
+        (Goal, "goals"),
+        (GoalContribution, "goal_contributions"),
+        (CategoryRule, "category_rules"),
+        (RecurringExpense, "recurring_expenses"),
+        (UploadedFile, "uploaded_files"),
+        (StatementPreview, "statement_previews"),
+        (AuditEvent, "audit_events"),
+    ]:
+        rows = await db.execute(select(model).where(model.user_id == uid))
+        data[key] = [_row_to_dict(r, model) for r in rows.scalars().all()]
+
+    tx_rows = await db.execute(
+        select(Transaction)
+        .where(Transaction.user_id == uid)
+        .order_by(Transaction.date.desc())
+    )
+    data["transactions"] = [_row_to_dict(r, Transaction) for r in tx_rows.scalars().all()]
+
+    export = {
+        "version": "1.0",
+        "exported_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "user_email": current_user.email,
+        "counts": {k: len(v) for k, v in data.items()},
+        "data": data,
+    }
+
+    filename = f"finanzas-full-export-{datetime.datetime.now(datetime.UTC).strftime('%Y%m%d-%H%M%S')}.json"
+    from starlette.responses import StreamingResponse
+    buf = io.BytesIO(json.dumps(export, default=_serialize, ensure_ascii=False, indent=2).encode())
+    return StreamingResponse(
+        buf,
+        media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

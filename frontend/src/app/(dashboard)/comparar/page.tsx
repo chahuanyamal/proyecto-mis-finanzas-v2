@@ -2,20 +2,13 @@
 
 import { transactionsApi } from "@/lib/api";
 import type { CategoryAggregate, TransactionSummary } from "@/lib/api-types";
+import { formatMoney, monthLabel, plain } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const CAT_TONES = ["", "r", "g", "v", "b"] as const;
 
-function fmt(value: number, currency = "CLP"): string {
-  if (Number.isNaN(value)) return "—";
-  return new Intl.NumberFormat("es-CL", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
-}
-function plain(value: number, currency = "CLP"): string {
-  return fmt(value, currency).replace(/[^\d.,\-]/g, "");
-}
 function monthRange(ym: string): { start: string; end: string } {
   const [y, m] = ym.split("-").map(Number);
   const start = `${ym}-01`;
@@ -23,14 +16,9 @@ function monthRange(ym: string): { start: string; end: string } {
   return { start, end };
 }
 function ymOffset(offset: number): string {
-  const n = new Date();
-  const d = new Date(n.getFullYear(), n.getMonth() + offset, 1);
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-function monthLabel(ym: string): { name: string; year: string } {
-  const [y, m] = ym.split("-").map(Number);
-  const name = new Date(y, m - 1, 1).toLocaleDateString("es-CL", { month: "long" });
-  return { name, year: String(y) };
 }
 function primaryCurrency(s: TransactionSummary | null): string {
   if (!s) return "CLP";
@@ -43,8 +31,7 @@ function delta(a: number, b: number): { abs: number; pct: number | null } {
 }
 
 export default function CompararPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [monthA, setMonthA] = useState(ymOffset(0));
   const [monthB, setMonthB] = useState(ymOffset(-1));
   const [sumA, setSumA] = useState<TransactionSummary | null>(null);
@@ -53,9 +40,6 @@ export default function CompararPage() {
   const [catB, setCatB] = useState<CategoryAggregate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/comparar"); }, [hasVerified, router, user]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -218,7 +202,7 @@ export default function CompararPage() {
                   <strong>{delta(aNet, bNet).pct !== null ? `${Math.abs(delta(aNet, bNet).pct as number).toFixed(1)}%` : "—"}</strong>{" "}
                   de {labelB.name} a {labelA.name}.{" "}
                   <span className="serif" style={{ color: "var(--text-2)" }}>
-                    {fmt(aIncome, cur)} en ingresos · {fmt(aExpense, cur)} en gastos.
+                    {formatMoney(aIncome, cur)} en ingresos · {formatMoney(aExpense, cur)} en gastos.
                   </span>
                 </div>
               </div>

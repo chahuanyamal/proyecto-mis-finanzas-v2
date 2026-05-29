@@ -8,6 +8,12 @@ import type {
   AnnualReport,
   AuditEvent,
   AutoCategorizeResult,
+  BulkUploadResult,
+  DebtAccount,
+  DebtCompareResult,
+  DebtPayoffResult,
+  DebtSnowballResult,
+  AiSuggestionResult,
   Category,
   CategoryPayload,
   CategoryRule,
@@ -25,6 +31,8 @@ import type {
   MonthAggregate,
   Notification,
   NotificationCount,
+  OfxPreview,
+  PaginatedTransactions,
   RangeFilters,
   Institution,
   LoginResponse,
@@ -157,7 +165,7 @@ export const searchApi = {
 
 export const transactionsApi = {
   list: (filters?: TransactionFilters) =>
-    api.get<Transaction[]>("/v1/transactions", { params: filters }),
+    api.get<PaginatedTransactions>("/v1/transactions", { params: filters }),
   summary: (filters?: TransactionFilters) =>
     api.get<TransactionSummary>("/v1/transactions/summary", { params: filters }),
   create: (payload: TransactionPayload) => api.post<Transaction>("/v1/transactions", payload),
@@ -285,6 +293,50 @@ export const reconciliationApi = {
     api.get<ReconciliationSummary>("/v1/reconciliation/summary", { params }),
 };
 
+export const ofxApi = {
+  preview: (accountId: string, file: File) => {
+    const data = new FormData();
+    data.append("file", file);
+    return api.post<OfxPreview>("/v1/ofx/preview", data, {
+      params: { account_id: accountId },
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  confirm: (accountId: string, file: File) => {
+    const data = new FormData();
+    data.append("file", file);
+    return api.post<{ uploaded_file_id: string; imported_transactions: number; bank_detected: string; period_start: string | null; period_end: string | null }>("/v1/ofx/confirm", data, {
+      params: { account_id: accountId },
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+};
+
+export const aiApi = {
+  suggestions: (top_n = 20) =>
+    api.get<AiSuggestionResult>("/v1/ai/categorize/suggestions", { params: { top_n } }),
+  apply: (transaction_id: string, category_id: string) =>
+    api.post<{ ok: boolean; transaction_id: string; category_id: string }>("/v1/ai/categorize/apply", null, {
+      params: { transaction_id, category_id },
+    }),
+  applyBulk: (suggestions: Array<{ transaction_id: string; suggested_category_id: string }>) =>
+    api.post<{ updated: number }>("/v1/ai/categorize/apply-bulk", { suggestions }),
+};
+
+export const debtApi = {
+  listAccounts: () => api.get<DebtAccount[]>("/v1/debt/accounts"),
+  simulate: (current_balance: string, annual_rate: string, minimum_payment: string, extra_payment?: string, account_name?: string) =>
+    api.post<DebtPayoffResult>("/v1/debt/simulate", null, {
+      params: { current_balance, annual_rate, minimum_payment, extra_payment: extra_payment || "0", account_name: account_name || "Cuenta" },
+    }),
+  compare: (current_balance: string, annual_rate: string, minimum_payment: string, account_name?: string) =>
+    api.post<DebtCompareResult>("/v1/debt/compare", null, {
+      params: { current_balance, annual_rate, minimum_payment, account_name: account_name || "Cuenta" },
+    }),
+  snowball: (accounts: Array<{ name: string; balance: string; rate: string; minimum: string }>, extra_monthly?: string) =>
+    api.post<DebtSnowballResult>("/v1/debt/snowball", { accounts, extra_monthly: extra_monthly || "0" }),
+};
+
 export const statementsApi = {
   list: () => api.get<StatementUpload[]>("/v1/statements"),
   previews: () => api.get<StatementPreview[]>("/v1/statements/previews"),
@@ -318,6 +370,15 @@ export const statementsApi = {
     data.append("file", file);
     return api.post<StatementUploadResponse>("/v1/statements/upload", data, {
       params: { account_id: accountId, parser_key: parserKey || undefined },
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  bulkUpload: (files: File[]) => {
+    const data = new FormData();
+    for (const file of files) {
+      data.append("files", file);
+    }
+    return api.post<BulkUploadResult>("/v1/statements/bulk-upload", data, {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },

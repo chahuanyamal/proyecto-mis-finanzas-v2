@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.logging import get_logger
+from app.core.rate_limit import rate_limit
 from app.core.security import REFRESH_TOKEN_TYPE, decode_token, hash_password, verify_password
 from app.models.user import User
 from app.modules.auth.deps import get_current_user
@@ -23,11 +25,15 @@ from app.modules.auth.service import (
 )
 from app.core.security import ACCESS_TOKEN_TYPE
 
+logger = get_logger(__name__)
+
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@rate_limit(max_requests=5, window_seconds=60)
 async def register(
+    request: Request,
     body: RegisterRequest,
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
@@ -49,7 +55,9 @@ async def register(
 
 
 @router.post("/login", response_model=LoginResponse)
+@rate_limit(max_requests=10, window_seconds=60)
 async def login(
+    request: Request,
     body: LoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
@@ -58,15 +66,18 @@ async def login(
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if user is None or not verify_password(body.password, user.hashed_password):
+        logger.warning("login_failed", email=email, ip=request.client.host if request.client else None)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credenciales incorrectas")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cuenta desactivada")
 
+    logger.info("login_success", user_id=str(user.id), email=email)
     set_auth_cookies(response, user)
     return LoginResponse(user=UserOut.model_validate(user))
 
 
 @router.post("/refresh")
+@rate_limit(max_requests=20, window_seconds=60)
 async def refresh(
     request: Request,
     response: Response,

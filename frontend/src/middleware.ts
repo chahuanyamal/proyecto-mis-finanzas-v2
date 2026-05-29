@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/accounts", "/transactions", "/categories", "/tags", "/rules", "/presupuestos", "/statements"];
+const PROTECTED_PREFIXES = [
+  "/dashboard", "/accounts", "/transactions", "/categories", "/tags",
+  "/rules", "/presupuestos", "/statements", "/notifications", "/recurring",
+  "/review", "/settings", "/goals", "/patrimonio", "/comparar", "/reports",
+  "/admin", "/reconciliation", "/insights", "/audit", "/ai", "/status",
+];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));

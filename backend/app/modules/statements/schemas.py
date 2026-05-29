@@ -96,3 +96,20 @@ class StatementQualityOut(BaseModel):
     opening_balance: str | None
     closing_balance: str | None
     warnings: list[str] = Field(default_factory=list)
+
+
+class BulkUploadItem(BaseModel):
+    account_id: str
+    filename: str
+    parser_key: str | None = None
+
+
+class BulkUploadRequest(BaseModel):
+    items: list[BulkUploadItem]
+
+
+class BulkUploadResult(BaseModel):
+    total: int
+    successful: int
+    failed: int
+    results: list[dict]

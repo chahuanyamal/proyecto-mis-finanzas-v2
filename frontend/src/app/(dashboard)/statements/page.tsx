@@ -7,7 +7,6 @@ import StatementPreviewCard from "@/components/statements/StatementPreviewCard";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2, Upload } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 function monthLabel(s: StatementUpload): string {
@@ -51,8 +50,7 @@ function statusProgress(status: string): { width: string; color: string } {
 }
 
 export default function StatementsPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [statements, setStatements] = useState<StatementUpload[]>([]);
   const [previews, setPreviews] = useState<StatementPreview[]>([]);
@@ -64,9 +62,6 @@ export default function StatementsPage() {
   const [isBusy, setIsBusy] = useState(false);
   const [message, setMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/statements"); }, [hasVerified, router, user]);
 
   async function loadData() {
     const [acc, st, pr, parserOptions, quality] = await Promise.all([

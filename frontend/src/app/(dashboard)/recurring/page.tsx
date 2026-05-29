@@ -2,8 +2,8 @@
 
 import { categoriesApi, recurringApi } from "@/lib/api";
 import type { Category, Recurring, RecurringDetectResult, RecurringPayload, UpcomingRecurring } from "@/lib/api-types";
+import { asNumber, plain } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const FREQ_LABELS: Record<string, string> = { weekly: "Semanal", monthly: "Mensual", yearly: "Anual" };
@@ -16,9 +16,7 @@ const emptyForm: RecurringPayload = {
 
 type Candidate = RecurringDetectResult["items"][number];
 
-function asNumber(value: string | null | undefined): number { return Number(value ?? 0); }
 function normName(value: string): string { return value.trim().toLowerCase().replace(/\s+/g, " "); }
-function fmt(value: number): string { return new Intl.NumberFormat("es-CL").format(Math.round(value)); }
 function shortDate(iso: string): string {
   const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
   if (Number.isNaN(d.getTime())) return iso;
@@ -36,8 +34,7 @@ function monthlyEquiv(amount: number, frequency: string): number {
 }
 
 export default function RecurringPage() {
-  const router = useRouter();
-  const { user, hasVerified, fetchMe } = useAuthStore();
+  const { user } = useAuthStore();
   const [items, setItems] = useState<Recurring[]>([]);
   const [upcoming, setUpcoming] = useState<UpcomingRecurring[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -49,9 +46,6 @@ export default function RecurringPage() {
   const [showForm, setShowForm] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [addingCandidate, setAddingCandidate] = useState<string | null>(null);
-
-  useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
-  useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/recurring"); }, [hasVerified, router, user]);
 
   async function load() {
     try {
@@ -204,10 +198,10 @@ export default function RecurringPage() {
         </div>
         <div className="num mono" style={{ fontSize: 22, fontWeight: 500, letterSpacing: "-0.015em", marginBottom: 2 }}>
           <span className="mono" style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 400, marginRight: 5 }}>{item.currency}</span>
-          {item.movement_type === "income" ? "+" : ""}{fmt(amount)}
+          {item.movement_type === "income" ? "+" : ""}{plain(amount)}
         </div>
         <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.04em", marginBottom: 14 }}>
-          {FREQ_LABELS[item.frequency].toUpperCase()} · <span style={{ color: "var(--text-2)" }}>${fmt(annual(amount, item.frequency))}/año</span>
+          {FREQ_LABELS[item.frequency].toUpperCase()} · <span style={{ color: "var(--text-2)" }}>${plain(annual(amount, item.frequency))}/año</span>
         </div>
         <div className="mono" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--line-2)", fontSize: 11 }}>
           <span style={{ color: "var(--text-3)" }}>Próx.</span>
@@ -223,7 +217,7 @@ export default function RecurringPage() {
         <div>
           <h1>Tus <span className="serif">suscripciones</span></h1>
           <div className="sub">
-            {activeItems.length} activas · <strong>${fmt(monthlyTotal)}/mes</strong> · <strong>${fmt(annualTotal)} al año</strong>
+            {activeItems.length} activas · <strong>${plain(monthlyTotal)}/mes</strong> · <strong>${plain(annualTotal)} al año</strong>
             {upcoming.length > 0 ? <> · {upcoming.length} próximo{upcoming.length === 1 ? "" : "s"}</> : null}
           </div>
         </div>
@@ -265,7 +259,7 @@ export default function RecurringPage() {
                     <span style={{ fontSize: 13, fontWeight: 500, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
                     <span className="mono" style={{ fontSize: 13, color: c.movement_type === "income" ? "var(--acc)" : "var(--text)", fontWeight: 500 }}>
                       <span style={{ fontSize: 10, color: "var(--text-3)", marginRight: 4 }}>{c.currency}</span>
-                      {c.movement_type === "income" ? "+" : ""}{fmt(asNumber(c.amount))}
+                      {c.movement_type === "income" ? "+" : ""}{plain(asNumber(c.amount))}
                     </span>
                     <span className="chip mono" style={{ fontSize: 10 }}>{FREQ_LABELS[c.frequency] ?? c.frequency}</span>
                     <span className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>{c.occurrences}× visto</span>
@@ -292,18 +286,18 @@ export default function RecurringPage() {
         </div>
         <div className="kpi r">
           <div className="lbl"><span className="sw" />Mensual</div>
-          <div className="val"><span className="cu">CLP</span>{fmt(monthlyTotal)}</div>
+          <div className="val"><span className="cu">CLP</span>{plain(monthlyTotal)}</div>
           <div className="sub">gasto recurrente fijo</div>
         </div>
         <div className="kpi g">
           <div className="lbl"><span className="sw" />Anual proyectado</div>
-          <div className="val"><span className="cu">CLP</span>{fmt(annualTotal)}</div>
+          <div className="val"><span className="cu">CLP</span>{plain(annualTotal)}</div>
           <div className="sub">a este ritmo de cobros</div>
         </div>
         <div className="kpi v">
           <div className="lbl"><span className="sw" />Próximo cobro</div>
           <div className="val" style={{ fontSize: 18 }}>{nextUp ? `${nextUp.name} · ${shortDate(nextUp.due_date)}` : "—"}</div>
-          <div className="sub">{nextUp ? `en ${nextUp.days_until} día(s) · $${fmt(asNumber(nextUp.amount))}` : "sin vencimientos"}</div>
+          <div className="sub">{nextUp ? `en ${nextUp.days_until} día(s) · $${plain(asNumber(nextUp.amount))}` : "sin vencimientos"}</div>
         </div>
       </section>
 
@@ -354,7 +348,7 @@ export default function RecurringPage() {
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
             <h3 className="mono" style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)", fontWeight: 500 }}>Próximos cobros · esta semana</h3>
-            <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{thisWeek.length} · ${fmt(thisWeek.reduce((s, u) => s + asNumber(u.amount), 0))}</span>
+            <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{thisWeek.length} · ${plain(thisWeek.reduce((s, u) => s + asNumber(u.amount), 0))}</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
             {thisWeek.map((u, i) => {
@@ -377,7 +371,7 @@ export default function RecurringPage() {
                     <span className="mono" style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, padding: "2px 7px", borderRadius: 99, ...(isToday ? { color: "var(--bg)", background: "var(--acc)" } : { color: "var(--gold)", background: "rgba(230,184,92,0.12)" }) }}>{isToday ? "Hoy" : shortDate(u.due_date)}</span>
                   </div>
                   <div className="num mono" style={{ fontSize: 22, fontWeight: 500, letterSpacing: "-0.015em", marginBottom: 2 }}>
-                    <span className="mono" style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 400, marginRight: 5 }}>{u.currency}</span>{fmt(asNumber(u.amount))}
+                    <span className="mono" style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 400, marginRight: 5 }}>{u.currency}</span>{plain(asNumber(u.amount))}
                   </div>
                   <div className="mono" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--line-2)", fontSize: 11 }}>
                     <span style={{ color: "var(--text-3)" }}>Próximo cobro</span>
