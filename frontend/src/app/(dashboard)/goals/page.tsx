@@ -1,16 +1,23 @@
 "use client";
 
 import { goalsApi } from "@/lib/api";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { EmptyState } from "@/components/ui/EmptyState";
 import type { Goal, GoalContribution, GoalDepositPayload, GoalPayload } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
-import { Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const emptyForm: GoalPayload = { name: "", target_amount: "1000000", current_amount: "0", currency: "CLP", target_date: "" };
 const emptyDeposit: GoalDepositPayload = { amount: "10000", date: new Date().toISOString().slice(0, 10), note: "" };
+
+const MARK_TONES = ["green", "gold", "violet", "blue"] as const;
+
+function asNumber(value: string | null | undefined): number { return Number(value ?? 0); }
+function fmt(value: number): string { return new Intl.NumberFormat("es-CL").format(Math.round(value)); }
+function shortDate(iso: string): string {
+  const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("es-CL", { day: "2-digit", month: "short" }).toUpperCase().replace(".", "");
+}
 
 export default function GoalsPage() {
   const router = useRouter();
@@ -21,6 +28,8 @@ export default function GoalsPage() {
   const [depositForms, setDepositForms] = useState<Record<string, GoalDepositPayload>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [openDeposit, setOpenDeposit] = useState<string | null>(null);
 
   useEffect(() => { if (!hasVerified) void fetchMe(); }, [fetchMe, hasVerified]);
   useEffect(() => { if (hasVerified && !user) router.replace("/login?next=/goals"); }, [hasVerified, router, user]);
@@ -40,11 +49,13 @@ export default function GoalsPage() {
   }
   useEffect(() => { if (user) void load(); }, [user]);
 
-  function reset() { setForm(emptyForm); setEditingId(null); }
+  function reset() { setForm(emptyForm); setEditingId(null); setShowForm(false); }
   function edit(goal: Goal) {
     setEditingId(goal.id);
     setForm({ name: goal.name, target_amount: goal.target_amount, current_amount: goal.current_amount, currency: goal.currency, target_date: goal.target_date ?? "" });
+    setShowForm(true);
   }
+  function startCreate() { setForm(emptyForm); setEditingId(null); setShowForm(true); }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const payload: GoalPayload = { ...form, target_date: form.target_date || null };
@@ -55,7 +66,7 @@ export default function GoalsPage() {
     } catch { setError("No se pudo guardar la meta."); }
   }
   async function remove(id: string) {
-    try { await goalsApi.remove(id); await load(); } catch { setError("No se pudo eliminar la meta."); }
+    try { await goalsApi.remove(id); reset(); await load(); } catch { setError("No se pudo eliminar la meta."); }
   }
   function setDeposit(goalId: string, changes: Partial<GoalDepositPayload>) {
     setDepositForms((current) => ({ ...current, [goalId]: { ...emptyDeposit, ...current[goalId], ...changes } }));
@@ -65,78 +76,272 @@ export default function GoalsPage() {
     try {
       await goalsApi.deposit(goalId, { ...payload, date: payload.date || null, note: payload.note || null });
       setDepositForms((current) => ({ ...current, [goalId]: emptyDeposit }));
+      setOpenDeposit(null);
       await load();
     } catch { setError("No se pudo registrar el aporte."); }
   }
 
-  return (
-    <main className="min-h-screen bg-surface-950 p-8 text-slate-100">
-      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1fr_360px]">
-        <section className="rounded-lg border border-slate-800 bg-surface-900 p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-brand-400">Metas</p>
-          <h1 className="mt-2 text-3xl font-bold">Metas de ahorro</h1>
-          {error ? <p className="mt-4 rounded bg-red-950/50 px-3 py-2 text-sm text-red-200">{error}</p> : null}
-          <div className="mt-6 space-y-3">
-            {goals.map((goal) => {
-              const recent = contributions[goal.id] ?? [];
-              const depositForm = depositForms[goal.id] ?? emptyDeposit;
-              return (
-              <div key={goal.id} className="rounded border border-slate-800 bg-black/30 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold">{goal.name}</p>
-                  <div className="flex items-center gap-4">
-                    <button onClick={() => edit(goal)} className="text-brand-300">Editar</button>
-                    <ConfirmButton title="Eliminar meta" description="Esta acción eliminará la meta y su historial de aportes." confirmLabel="Eliminar" onConfirm={() => remove(goal.id)} className="text-red-300"><Trash2 size={16} /></ConfirmButton>
-                  </div>
-                </div>
-                <p className="mt-1 text-sm text-slate-400">
-                  {goal.current_amount} / {goal.target_amount} {goal.currency}
-                  {goal.target_date ? ` · meta ${goal.target_date}` : ""}
-                </p>
-                <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-800">
-                  <div className="h-full bg-brand-500" style={{ width: `${Math.min(goal.percent, 100)}%` }} />
-                </div>
-                <p className="mt-1 text-right text-xs text-slate-500">{goal.percent}%</p>
-                <div className="mt-4 grid gap-2 md:grid-cols-[120px_150px_1fr_auto]">
-                  <input type="number" step="0.01" className="rounded border border-slate-700 bg-black px-2 py-1 text-sm" value={depositForm.amount} onChange={(e) => setDeposit(goal.id, { amount: e.target.value })} placeholder="Aporte" />
-                  <input type="date" className="rounded border border-slate-700 bg-black px-2 py-1 text-sm" value={depositForm.date ?? ""} onChange={(e) => setDeposit(goal.id, { date: e.target.value })} />
-                  <input className="rounded border border-slate-700 bg-black px-2 py-1 text-sm" value={depositForm.note ?? ""} onChange={(e) => setDeposit(goal.id, { note: e.target.value })} placeholder="Nota" />
-                  <button onClick={() => void deposit(goal.id)} className="flex items-center justify-center gap-1 rounded bg-brand-500 px-3 py-1 text-sm font-semibold text-black"><Plus size={14} /> Aportar</button>
-                </div>
-                {recent.length > 0 ? (
-                  <div className="mt-3 border-t border-slate-800 pt-3">
-                    <p className="text-xs uppercase tracking-wider text-slate-500">Últimos aportes</p>
-                    <div className="mt-2 space-y-1">
-                      {recent.slice(0, 3).map((item) => (
-                        <div key={item.id} className="flex justify-between gap-3 text-xs text-slate-400">
-                          <span>{item.date}{item.note ? ` · ${item.note}` : ""}</span>
-                          <span className="font-mono text-emerald-300">+{item.amount} {goal.currency}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            );})}
-            {goals.length === 0 ? <EmptyState title="Sin metas" description="Crea tu primera meta de ahorro para seguir aportes y avance." /> : null}
-          </div>
-        </section>
-        <aside className="rounded-lg border border-slate-800 bg-surface-900 p-6">
-          <h2 className="text-lg font-semibold">{editingId ? "Editar" : "Nueva"} meta</h2>
-          <form onSubmit={save} className="mt-5 space-y-4">
-            <input className="w-full rounded border border-slate-700 bg-black px-3 py-2" placeholder="Nombre" value={form.name} onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))} required />
-            <input type="number" step="0.01" className="w-full rounded border border-slate-700 bg-black px-3 py-2" placeholder="Monto objetivo" value={form.target_amount} onChange={(e) => setForm((v) => ({ ...v, target_amount: e.target.value }))} required />
-            <input type="number" step="0.01" className="w-full rounded border border-slate-700 bg-black px-3 py-2" placeholder="Ahorrado" value={form.current_amount} onChange={(e) => setForm((v) => ({ ...v, current_amount: e.target.value }))} />
-            <select className="w-full rounded border border-slate-700 bg-black px-3 py-2" value={form.currency} onChange={(e) => setForm((v) => ({ ...v, currency: e.target.value }))}>
-              <option value="CLP">CLP</option>
-              <option value="USD">USD</option>
-            </select>
-            <input type="date" className="w-full rounded border border-slate-700 bg-black px-3 py-2" value={form.target_date ?? ""} onChange={(e) => setForm((v) => ({ ...v, target_date: e.target.value }))} />
-            <button className="flex w-full justify-center gap-2 rounded bg-brand-500 px-4 py-2 font-semibold text-black"><Save size={18} /> Guardar</button>
-            {editingId ? <button type="button" onClick={reset} className="w-full rounded border border-slate-700 px-4 py-2">Cancelar</button> : null}
-          </form>
-        </aside>
+  // ── Derived KPIs ──
+  const totalTarget = goals.reduce((s, g) => s + asNumber(g.target_amount), 0);
+  const totalSaved = goals.reduce((s, g) => s + asNumber(g.current_amount), 0);
+  const completed = goals.filter((g) => g.percent >= 100).length;
+  const active = goals.length - completed;
+  const avgPercent = goals.length ? goals.reduce((s, g) => s + g.percent, 0) / goals.length : 0;
+  const primaryCurrency = goals[0]?.currency ?? "CLP";
+
+  const allContributions = useMemo(() => {
+    const goalName = new Map(goals.map((g) => [g.id, g.name]));
+    return Object.entries(contributions)
+      .flatMap(([goalId, list]) => list.map((c) => ({ ...c, goalName: goalName.get(goalId) ?? "" })))
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [contributions, goals]);
+  const historyRows = allContributions.slice(0, 12);
+  const historyTotal = allContributions.reduce((s, c) => s + asNumber(c.amount), 0);
+
+  const featured = goals[0];
+  const rest = goals.slice(1);
+
+  function statusFor(goal: Goal): { cls: string; label: string } {
+    if (goal.percent >= 100) return { cls: "done", label: "Completada" };
+    if (goal.percent >= 67) return { cls: "ok", label: "A tiempo" };
+    if (goal.percent >= 34) return { cls: "warn", label: "Algo atrasado" };
+    return { cls: "risk", label: "En riesgo" };
+  }
+  function fillClass(goal: Goal): string {
+    if (goal.percent >= 67) return "";
+    if (goal.percent >= 34) return "warn";
+    return "risk";
+  }
+
+  function DepositBox({ goal }: { goal: Goal }) {
+    const depositForm = depositForms[goal.id] ?? emptyDeposit;
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 26px 20px", borderTop: "1px solid var(--line-2)" }}>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>Monto aporte</label>
+          <input type="number" step="0.01" className="input" value={depositForm.amount} onChange={(e) => setDeposit(goal.id, { amount: e.target.value })} />
+        </div>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>Fecha</label>
+          <input type="date" className="input" value={depositForm.date ?? ""} onChange={(e) => setDeposit(goal.id, { date: e.target.value })} />
+        </div>
+        <div className="field" style={{ marginBottom: 0, gridColumn: "span 2" }}>
+          <label>Nota</label>
+          <input className="input" value={depositForm.note ?? ""} onChange={(e) => setDeposit(goal.id, { note: e.target.value })} placeholder="Nota (opcional)" />
+        </div>
+        <div style={{ gridColumn: "span 2", display: "flex", gap: 10 }}>
+          <button className="btn primary" onClick={() => void deposit(goal.id)}>+ Aportar</button>
+          <button className="btn ghost" onClick={() => setOpenDeposit(null)}>Cerrar</button>
+        </div>
       </div>
-    </main>
+    );
+  }
+
+  function renderGoal(goal: Goal, idx: number, featured = false) {
+    const status = statusFor(goal);
+    const tone = MARK_TONES[idx % MARK_TONES.length];
+    const target = asNumber(goal.target_amount);
+    const current = asNumber(goal.current_amount);
+    const remaining = target - current;
+    return (
+      <div
+        key={goal.id}
+        className="panel"
+        style={{
+          padding: 0,
+          gridColumn: featured ? "span 2" : undefined,
+          borderColor: featured ? "rgba(94,233,181,0.25)" : undefined,
+          background: featured ? "linear-gradient(135deg, var(--bg-2), rgba(94,233,181,0.04))" : undefined,
+          cursor: "pointer",
+        }}
+      >
+        <div style={{ padding: "22px 26px 16px", display: "flex", alignItems: "flex-start", gap: 18 }} onClick={() => edit(goal)}>
+          <div
+            style={{
+              width: featured ? 48 : 44, height: featured ? 48 : 44, borderRadius: 12, display: "grid", placeItems: "center", flex: "0 0 auto",
+              background: tone === "green" ? "rgba(94,233,181,0.12)" : tone === "gold" ? "rgba(230,184,92,0.12)" : tone === "violet" ? "rgba(180,156,255,0.12)" : "rgba(122,176,255,0.12)",
+              color: tone === "green" ? "var(--acc)" : tone === "gold" ? "var(--gold)" : tone === "violet" ? "var(--violet)" : "var(--blue)",
+              fontFamily: "var(--font-instrument-serif), serif", fontStyle: "italic", fontSize: 22,
+            }}
+          >
+            {goal.name.charAt(0).toUpperCase()}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: featured ? 24 : 18, fontWeight: featured ? 400 : 500, letterSpacing: "-0.01em", marginBottom: 4 }}>{goal.name}</div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <span>{goal.target_date ? `META ${shortDate(goal.target_date)}` : "SIN FECHA · OBJETIVO ABIERTO"}</span>
+              <span>·</span>
+              <span>{goal.currency}</span>
+            </div>
+          </div>
+          <span className={`chip ${status.cls === "risk" ? "err" : status.cls === "warn" ? "warn" : status.cls === "done" ? "" : "ok"}`} style={{ flex: "0 0 auto" }}>{status.label}</span>
+        </div>
+
+        <div style={{ padding: "0 26px 22px" }} onClick={() => edit(goal)}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+            <div className="num" style={{ fontSize: featured ? 44 : 30, fontWeight: 300, letterSpacing: "-0.02em" }}>
+              <span className="mono" style={{ fontSize: 13, color: "var(--text-3)", marginRight: 6 }}>{goal.currency}</span>{fmt(current)}
+            </div>
+            <div className="mono" style={{ fontSize: 12, color: "var(--text-3)", textAlign: "right" }}>
+              META<strong style={{ color: "var(--text-2)", display: "block", fontSize: 16, marginTop: 4, fontWeight: 500 }}>${fmt(target)}</strong>
+            </div>
+          </div>
+          <div style={{ position: "relative", marginBottom: 6 }}>
+            <div style={{ height: 8, background: "var(--bg-3)", borderRadius: 4, overflow: "hidden", position: "relative" }}>
+              <div
+                style={{
+                  height: "100%", borderRadius: 4, width: `${Math.min(goal.percent, 100)}%`,
+                  background: fillClass(goal) === "warn" ? "var(--gold)" : fillClass(goal) === "risk" ? "var(--rust)" : "var(--acc)",
+                }}
+              />
+            </div>
+            <div style={{ position: "absolute", top: -3, bottom: -3, width: 2, background: "var(--text-2)", opacity: 0.5, left: "50%" }}>
+              <span className="mono" style={{ position: "absolute", top: -16, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: "var(--text-3)", whiteSpace: "nowrap" }}>MITAD</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, padding: "14px 26px", borderTop: "1px solid var(--line-2)", background: "rgba(0,0,0,0.15)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <span className="label">Faltan</span>
+            <span className="num" style={{ fontSize: 13, fontWeight: 500 }}>{remaining > 0 ? `$${fmt(remaining)}` : "✓ logrado"}</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <span className="label">Objetivo</span>
+            <span className="num" style={{ fontSize: 13, fontWeight: 500 }}>{goal.target_date ? shortDate(goal.target_date) : "abierto"}</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <span className="label">Tasa</span>
+            <span className="num" style={{ fontSize: 13, fontWeight: 500, color: "var(--acc)" }}>{goal.percent}%</span>
+          </div>
+        </div>
+
+        <div style={{ padding: "0 26px 14px", display: "flex", gap: 10 }}>
+          <button className="btn ghost" onClick={(e) => { e.stopPropagation(); setOpenDeposit(openDeposit === goal.id ? null : goal.id); }}>+ Aportar</button>
+        </div>
+        {openDeposit === goal.id ? <DepositBox goal={goal} /> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="content">
+      <div className="title-row">
+        <div>
+          <h1>Tus <span className="serif">metas</span></h1>
+          <div className="sub">
+            {active} activa{active === 1 ? "" : "s"} · {completed} completada{completed === 1 ? "" : "s"} · ahorrado <strong style={{ color: "var(--acc)" }}>${fmt(totalSaved)}</strong> de ${fmt(totalTarget)}
+          </div>
+        </div>
+        <div className="actions">
+          <button className="btn primary" onClick={startCreate}>+ Nueva meta</button>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="insight err" style={{ marginBottom: 20 }}>
+          <div className="insight-mark">!</div>
+          <div className="insight-body"><div className="txt">{error}</div></div>
+          <span />
+        </div>
+      ) : null}
+
+      <section className="strip">
+        <div className="kpi on">
+          <div className="lbl"><span className="sw" />Activas</div>
+          <div className="val num">{active}</div>
+          <div className="sub">{completed} completada{completed === 1 ? "" : "s"}</div>
+        </div>
+        <div className="kpi">
+          <div className="lbl"><span className="sw" />Total objetivo</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span>{fmt(totalTarget)}</div>
+          <div className="sub">monto agregado de metas</div>
+        </div>
+        <div className="kpi g">
+          <div className="lbl"><span className="sw" />Aportado total</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span>{fmt(totalSaved)}</div>
+          <div className="sub">{allContributions.length} aporte{allContributions.length === 1 ? "" : "s"}</div>
+        </div>
+        <div className="kpi v">
+          <div className="lbl"><span className="sw" />Avance promedio</div>
+          <div className="val num">{avgPercent.toFixed(1)}%</div>
+          <div className="sub">entre todas las metas</div>
+        </div>
+      </section>
+
+      <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }}>
+        {featured ? renderGoal(featured, 0, true) : null}
+        {rest.map((goal, i) => renderGoal(goal, i + 1, false))}
+
+        <div
+          onClick={startCreate}
+          style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 26px", background: "transparent", border: "1.5px dashed var(--line)", borderRadius: 14, cursor: "pointer", textAlign: "center", gap: 14, color: "var(--text-3)" }}
+        >
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: "var(--bg-2)", display: "grid", placeItems: "center", fontSize: 22, fontWeight: 300 }}>+</div>
+          <div style={{ fontSize: 14, fontWeight: 500 }}>Nueva meta</div>
+          <div className="mono" style={{ fontSize: 11, lineHeight: 1.5 }}>define un objetivo, monto y fecha</div>
+        </div>
+      </section>
+
+      {/* History */}
+      <div className="panel">
+        <div className="panel-head">
+          <h3>Historial de aportes</h3>
+          <span className="meta">{allContributions.length} movimientos · ${fmt(historyTotal)} total</span>
+        </div>
+        {historyRows.length === 0 ? (
+          <p className="mono" style={{ fontSize: 12, color: "var(--text-3)" }}>Aún no registras aportes.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {historyRows.map((row) => (
+              <div key={row.id} style={{ display: "grid", gridTemplateColumns: "100px 1fr auto", gap: 18, alignItems: "center", padding: "11px 0", borderBottom: "1px solid var(--line-2)" }}>
+                <span className="mono" style={{ color: "var(--text-3)", fontSize: 10, letterSpacing: "0.06em" }}>{shortDate(row.date)}</span>
+                <span style={{ fontSize: 13 }}>Aporte a <strong style={{ fontWeight: 500 }}>{row.goalName}</strong>{row.note ? <span className="mono" style={{ color: "var(--text-3)", fontSize: 11 }}> · {row.note}</span> : null}</span>
+                <span className="num" style={{ fontWeight: 500, color: "var(--acc)", textAlign: "right" }}>+${fmt(asNumber(row.amount))}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Form panel */}
+      {showForm ? (
+        <div className="panel" style={{ marginTop: 24, maxWidth: 460 }}>
+          <div className="panel-head">
+            <h3>{editingId ? "Editar" : "Nueva"} meta</h3>
+          </div>
+          <form onSubmit={save}>
+            <div className="field">
+              <label>Nombre</label>
+              <input className="input" placeholder="Nombre" value={form.name} onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))} required />
+            </div>
+            <div className="field">
+              <label>Monto objetivo</label>
+              <input type="number" step="0.01" className="input" value={form.target_amount} onChange={(e) => setForm((v) => ({ ...v, target_amount: e.target.value }))} required />
+            </div>
+            <div className="field">
+              <label>Ahorrado</label>
+              <input type="number" step="0.01" className="input" value={form.current_amount} onChange={(e) => setForm((v) => ({ ...v, current_amount: e.target.value }))} />
+            </div>
+            <div className="field">
+              <label>Moneda</label>
+              <select className="input" value={form.currency} onChange={(e) => setForm((v) => ({ ...v, currency: e.target.value }))}>
+                <option value="CLP">CLP</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>Fecha objetivo</label>
+              <input type="date" className="input" value={form.target_date ?? ""} onChange={(e) => setForm((v) => ({ ...v, target_date: e.target.value }))} />
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <button className="btn primary">Guardar</button>
+              <button type="button" className="btn ghost" onClick={reset}>Cancelar</button>
+              {editingId ? <button type="button" className="btn danger" style={{ marginLeft: "auto" }} onClick={() => void remove(editingId)}>Eliminar</button> : null}
+            </div>
+          </form>
+        </div>
+      ) : null}
+    </div>
   );
 }
