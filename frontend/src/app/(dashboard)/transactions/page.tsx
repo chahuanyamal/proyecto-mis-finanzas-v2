@@ -4,7 +4,7 @@ import { accountsApi, categoriesApi, tagsApi, transactionsApi } from "@/lib/api"
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Account, Category, SplitPayload, Tag, Transaction, TransactionFilters, TransactionPayload, TransactionSummary } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
-import { Download, Flag, Loader2, Save, Sparkles, Trash2 } from "lucide-react";
+import { Download, Loader2, Save, Sparkles, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -32,6 +32,13 @@ function fmt(value: number | string, currency = "CLP"): string {
 }
 function dayLabel(date: string): string {
   return new Date(`${date}T00:00:00`).toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+// Swatch tonal por categoría — color estable derivado del nombre (paleta Bóveda).
+const CHIP_PALETTE = ["var(--acc)", "var(--gold)", "var(--rust)", "var(--violet)", "var(--blue)", "var(--text-2)"];
+function chipColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return CHIP_PALETTE[h % CHIP_PALETTE.length];
 }
 
 export default function TransactionsPage() {
@@ -261,7 +268,8 @@ export default function TransactionsPage() {
       {/* Bulk action bar */}
       {selected.size > 0 ? (
         <div className="panel" style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 14px", marginBottom: 10, background: "rgba(94,233,181,0.06)", borderColor: "rgba(94,233,181,0.18)" }}>
-          <strong className="mono" style={{ color: "var(--text)" }}>{selected.size} seleccionados</strong>
+          <span style={{ width: 14, height: 14, borderRadius: 3, background: "var(--acc)", color: "var(--bg)", display: "grid", placeItems: "center", fontSize: 10 }}>✓</span>
+          <strong className="mono" style={{ color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{selected.size} seleccionados</strong>
           <span className="mono" style={{ color: "var(--text-3)" }}>· neto {fmt(selectedTotal, primaryCurrency)}</span>
           <div style={{ flex: 1 }} />
           <select className="filt" style={{ appearance: "auto" }} value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
@@ -278,13 +286,13 @@ export default function TransactionsPage() {
       ) : (
         <>
           <div className="tbl">
-            <div className="tbl-head" style={{ display: "grid", gridTemplateColumns: "30px 88px 1fr 200px 170px 130px 60px", gap: 14 }}>
+            <div className="tbl-head" style={{ display: "grid", gridTemplateColumns: "30px 88px 1fr 200px 170px 130px 30px", gap: 14 }}>
               <div />
               <div>Fecha ↓</div>
               <div>Descripción</div>
               <div>Categoría</div>
               <div>Cuenta</div>
-              <div className="r">Monto</div>
+              <div className="r">Monto · {primaryCurrency}</div>
               <div />
             </div>
 
@@ -303,6 +311,7 @@ export default function TransactionsPage() {
                     const isSel = selected.has(tx.id);
                     const isFlag = tx.is_flagged || tx.is_duplicate;
                     const uncategorized = !tx.category;
+                    const flagText = tx.is_duplicate ? "posible duplicado" : (tx.is_flagged ? (tx.flag_reason || "revisar") : "");
                     return (
                       <div
                         key={tx.id}
@@ -310,7 +319,7 @@ export default function TransactionsPage() {
                         onClick={() => edit(tx)}
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "30px 88px 1fr 200px 170px 130px 60px",
+                          gridTemplateColumns: "30px 88px 1fr 200px 170px 130px 30px",
                           gap: 14,
                           background: isSel ? "rgba(94,233,181,0.05)" : isFlag ? "rgba(230,184,92,0.04)" : undefined,
                         }}
@@ -324,9 +333,8 @@ export default function TransactionsPage() {
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 8 }}>
                             {tx.description}
+                            {flagText ? <span className="mono" style={{ fontSize: 10, color: "var(--gold)", letterSpacing: "0.06em", background: "rgba(230,184,92,0.1)", padding: "1px 6px", borderRadius: 99 }}>{flagText}</span> : null}
                             {tx.is_internal_transfer ? <span className="mono" style={{ fontSize: 10, color: "var(--blue)", background: "rgba(122,176,255,0.1)", padding: "1px 6px", borderRadius: 99 }}>interna</span> : null}
-                            {tx.is_duplicate ? <span className="mono" style={{ fontSize: 10, color: "var(--gold)", background: "rgba(230,184,92,0.1)", padding: "1px 6px", borderRadius: 99 }}>duplicado</span> : null}
-                            {tx.is_flagged ? <Flag size={11} style={{ color: "var(--gold)" }} /> : null}
                             {tx.splits.length ? <span className="mono" style={{ fontSize: 10, color: "var(--violet)", background: "rgba(180,156,255,0.1)", padding: "1px 6px", borderRadius: 99 }}>split</span> : null}
                           </div>
                           <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
@@ -334,7 +342,7 @@ export default function TransactionsPage() {
                           </div>
                         </div>
                         <div>
-                          <span className={`chip${uncategorized ? " empty" : ""}`}><span className="sw" />{tx.category?.name ?? "Sin categoría"}</span>
+                          <span className={`chip${uncategorized ? " empty" : ""}`}><span className="sw" style={uncategorized ? undefined : { background: chipColor(tx.category!.name) }} />{tx.category?.name ?? "Sin categoría"}</span>
                         </div>
                         <div className="mono" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "var(--text-2)" }}>
                           <span style={{ width: 8, height: 8, borderRadius: 2, background: tx.account?.account_type === "credit" ? "var(--rust)" : "var(--acc)" }} />

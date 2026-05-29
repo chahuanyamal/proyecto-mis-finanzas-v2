@@ -26,6 +26,8 @@ export default function CategoriesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [query, setQuery] = useState("");
+  const [scopeFilter, setScopeFilter] = useState<"all" | "mine" | "system">("all");
 
   useEffect(() => {
     if (!hasVerified) void fetchMe();
@@ -92,8 +94,21 @@ export default function CategoriesPage() {
     }
   }
 
-  const parents = useMemo(() => categories.filter((c) => !c.parent_id), [categories]);
-  const orphans = useMemo(() => categories.filter((c) => c.parent_id), [categories]);
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return categories.filter((c) => {
+      if (scopeFilter === "mine" && c.user_id === null) return false;
+      if (scopeFilter === "system" && c.user_id !== null) return false;
+      if (!q) return true;
+      return c.name.toLowerCase().includes(q);
+    });
+  }, [categories, query, scopeFilter]);
+
+  const mineCount = useMemo(() => categories.filter((c) => c.user_id !== null).length, [categories]);
+  const systemCount = useMemo(() => categories.filter((c) => c.user_id === null).length, [categories]);
+
+  const parents = useMemo(() => visible.filter((c) => !c.parent_id), [visible]);
+  const orphans = useMemo(() => visible.filter((c) => c.parent_id), [visible]);
   const subCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const c of categories) {
@@ -104,15 +119,33 @@ export default function CategoriesPage() {
 
   const withColor = categories.filter((c) => c.color).length;
 
-  const GRID = "grid grid-cols-[36px_1fr_280px_90px_32px] gap-3.5 items-center";
+  // Matches the design's 6-column categories grid.
+  const GRID = {
+    display: "grid",
+    gridTemplateColumns: "36px 1fr 280px 160px 90px 32px",
+    gap: 14,
+    alignItems: "center",
+  } as const;
 
   function Row({ category }: { category: Category }) {
     const isSystem = category.user_id === null;
     const parent = categories.find((item) => item.id === category.parent_id);
     const subs = subCount.get(category.id) ?? 0;
+    const childNames = categories
+      .filter((c) => c.parent_id === category.id)
+      .map((c) => c.name.toLowerCase());
+    const subText = childNames.length > 0
+      ? childNames.slice(0, 3).join(" · ")
+      : parent
+        ? `en ${parent.name.toLowerCase()}`
+        : isSystem
+          ? "categoría de sistema"
+          : "categoría raíz";
+    const tagLabel = subs > 0 ? `${subs} sub` : isSystem ? "interna" : "sin sub";
     return (
       <div
-        className={`${GRID} cursor-pointer border-b border-[color:var(--line-2)] px-4 py-3 last:border-0 hover:bg-[color:var(--bg-3)]`}
+        className="cursor-pointer border-b border-[color:var(--line-2)] px-4 py-[13px] last:border-0 hover:bg-[color:var(--bg-3)]"
+        style={GRID}
         onClick={() => (isSystem ? undefined : edit(category))}
       >
         <div
@@ -125,16 +158,22 @@ export default function CategoriesPage() {
           <div className="truncate text-[14px] font-medium text-[color:var(--text)]">{category.name}</div>
           <div className="mt-[3px] flex items-center gap-2.5 font-mono text-[11px] text-[color:var(--text-3)]">
             <span className="rounded-full bg-[color:var(--bg-3)] px-1.5 py-px text-[10px] uppercase">
-              {subs > 0 ? `${subs} sub` : isSystem ? "sistema" : "sin sub"}
+              {tagLabel}
             </span>
-            {parent ? <span className="truncate">en {parent.name}</span> : null}
+            <span className="truncate">{subText}</span>
           </div>
         </div>
-        <div className="font-mono text-[11px] text-[color:var(--text-3)]">
-          {parent ? `subcategoría · ${parent.name}` : "categoría raíz"}
+        {/* Budget · uso — no budget data from API; show jerarquía descriptor in its place */}
+        <div className="font-serif text-[13px] italic text-[color:var(--text-3)]">
+          {parent ? `subcategoría · ${parent.name}` : "— sin presupuesto"}
         </div>
-        <div className="text-right font-mono text-[12px] text-[color:var(--text-3)]">
-          {category.icon ?? "—"}
+        {/* Movimiento mes — not provided by API */}
+        <div className="text-right font-mono text-[15px] font-medium tabular-nums text-[color:var(--text-3)]">
+          —
+        </div>
+        {/* % gasto — not provided by API */}
+        <div className="text-right font-mono text-[13px] font-medium text-[color:var(--text-3)]">
+          —
         </div>
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
           {isSystem ? (
@@ -149,7 +188,7 @@ export default function CategoriesPage() {
               onConfirm={() => remove(category.id)}
               className="text-[color:var(--text-3)] hover:text-[color:var(--rust)]"
             >
-              ✕
+              ⋯
             </ConfirmButton>
           )}
         </div>
@@ -302,6 +341,33 @@ export default function CategoriesPage() {
         </div>
       ) : null}
 
+      {!isLoading && categories.length > 0 ? (
+        <div className="filters">
+          <div className="filt-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              placeholder="Buscar categoría por nombre…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div className="seg" style={{ marginLeft: "auto" }}>
+            <button className={scopeFilter === "all" ? "on" : ""} onClick={() => setScopeFilter("all")}>
+              Todas · {categories.length}
+            </button>
+            <button className={scopeFilter === "mine" ? "on" : ""} onClick={() => setScopeFilter("mine")}>
+              Personales · {mineCount}
+            </button>
+            <button className={scopeFilter === "system" ? "on" : ""} onClick={() => setScopeFilter("system")}>
+              Sistema · {systemCount}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {isLoading ? (
         <div className="flex items-center gap-2 py-10 font-mono text-[13px] text-[color:var(--text-3)]">
           <Loader2 className="animate-spin" size={18} /> Cargando categorías…
@@ -319,11 +385,12 @@ export default function CategoriesPage() {
         </div>
       ) : (
         <div className="tbl">
-          <div className={`${GRID} tbl-head`}>
+          <div className="tbl-head font-mono" style={{ ...GRID, padding: "11px 16px" }}>
             <div />
             <div>Categoría</div>
-            <div>Jerarquía</div>
-            <div className="r">Icono</div>
+            <div>Presupuesto · uso</div>
+            <div className="r">Movimiento mes</div>
+            <div className="r">% gasto</div>
             <div />
           </div>
 

@@ -25,6 +25,31 @@ function monthKey(iso: string): string {
   return iso.slice(0, 7);
 }
 
+// Tipo de archivo a partir de la extensión → glyph + tono del file-mark.
+function fileKind(filename: string): { label: string; tone: "pdf" | "csv" | "xls" | "ofx" } {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "csv") return { label: "CSV", tone: "csv" };
+  if (ext === "xls" || ext === "xlsx") return { label: "XLS", tone: "xls" };
+  if (ext === "ofx" || ext === "qif") return { label: "OFX", tone: "ofx" };
+  return { label: "PDF", tone: "pdf" };
+}
+const FILE_TONE: Record<string, string> = {
+  pdf: "var(--rust)",
+  csv: "var(--acc)",
+  xls: "var(--gold)",
+  ofx: "var(--violet)",
+};
+
+// Estado → barra de progreso (ancho + color) y meta legible.
+function statusProgress(status: string): { width: string; color: string } {
+  const s = status.toLowerCase();
+  if (s.includes("process") && !s.includes("ed")) return { width: "62%", color: "var(--gold)" };
+  if (s === "pending") return { width: "62%", color: "var(--gold)" };
+  if (s === "error" || s.includes("fail")) return { width: "34%", color: "var(--rust)" };
+  if (s === "cancelled") return { width: "100%", color: "var(--text-3)" };
+  return { width: "100%", color: "var(--acc)" };
+}
+
 export default function StatementsPage() {
   const router = useRouter();
   const { user, hasVerified, fetchMe } = useAuthStore();
@@ -198,7 +223,12 @@ export default function StatementsPage() {
           </div>
           <div>
             <h3 style={{ fontSize: 18, fontWeight: 400, marginBottom: 6 }}>Sube una cartola <span className="serif" style={{ color: "var(--acc)" }}>— preview antes de importar</span></h3>
-            <p className="mono" style={{ fontSize: 12, color: "var(--text-3)" }}>SOPORTE PDF · DETECCIÓN AUTOMÁTICA DE BANCO · REVISA Y EDITA FILAS ANTES DE CONFIRMAR</p>
+            <p className="mono" style={{ fontSize: 12, color: "var(--text-3)", letterSpacing: "0.04em" }}>SOPORTE PDF · DETECCIÓN AUTOMÁTICA DE BANCO · <span style={{ color: "var(--text-2)" }}>REVISA Y EDITA FILAS ANTES DE CONFIRMAR</span></p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+              {["PDF", "CSV", "XLSX", "OFX", "QIF"].map((f) => (
+                <span key={f} className="mono" style={{ fontSize: 10, color: "var(--text-3)", border: "1px solid var(--line)", borderRadius: 4, padding: "2px 7px", background: "var(--bg)" }}>{f}</span>
+              ))}
+            </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>
               <select className="input" style={{ width: "auto", minWidth: 160 }} value={accountId} onChange={(e) => setAccountId(e.target.value)} required>
                 <option value="">Cuenta</option>
@@ -256,37 +286,47 @@ export default function StatementsPage() {
               {coverageMatrix.map((row) => (
                 <React.Fragment key={row.account.id}>
                   <div
+                    className="mono"
                     title={row.account.name}
-                    style={{ fontSize: 11, color: "var(--text-2)", display: "flex", alignItems: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 8 }}
+                    style={{ fontSize: 11, color: "var(--text-2)", display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 8 }}
                   >
+                    <span style={{ flex: "0 0 7px", width: 7, height: 7, borderRadius: 2, background: row.account.account_type === "credit" ? "var(--rust)" : "var(--acc)" }} />
                     {row.account.name}
                   </div>
                   {row.cells.map((cell) => {
-                    const bg =
+                    const visual =
                       cell.state === "ok"
-                        ? "rgba(94,233,181,0.18)"
+                        ? { bg: "rgba(94,233,181,0.7)", color: "var(--bg)", weight: 600, glyph: "✓" }
                         : cell.state === "partial"
-                          ? "rgba(230,184,92,0.18)"
+                          ? { bg: "rgba(230,184,92,0.5)", color: "var(--bg)", weight: 600, glyph: "·" }
                           : cell.state === "missing"
-                            ? "rgba(232,122,91,0.12)"
-                            : "var(--bg-3)";
+                            ? { bg: "rgba(232,122,91,0.15)", color: "var(--rust)", weight: 400, glyph: "!" }
+                            : { bg: "var(--bg-3)", color: "var(--text-3)", weight: 400, glyph: "·" };
                     const stateLabel =
                       cell.state === "ok" ? "cubierto" : cell.state === "partial" ? "parcial" : cell.state === "future" ? "futuro" : "sin cartola";
                     return (
                       <div
                         key={cell.month.key}
+                        className="mono"
                         title={`${row.account.name} · ${cell.month.key} · ${stateLabel}`}
                         style={{
                           height: 24,
-                          borderRadius: 4,
-                          background: bg,
-                          border: "1px solid var(--line)",
-                          transition: "transform 0.12s ease",
-                          cursor: "default",
+                          borderRadius: 3,
+                          background: visual.bg,
+                          opacity: cell.state === "future" ? 0.4 : 1,
+                          display: "grid",
+                          placeItems: "center",
+                          fontSize: 9,
+                          color: visual.color,
+                          fontWeight: visual.weight,
+                          transition: "transform 0.1s",
+                          cursor: "pointer",
                         }}
                         onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.06)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
-                      />
+                      >
+                        {visual.glyph}
+                      </div>
                     );
                   })}
                 </React.Fragment>
@@ -329,49 +369,113 @@ export default function StatementsPage() {
 
       {/* Tabla historial */}
       <div className="tbl">
-        <div className="tbl-head" style={{ display: "grid", gridTemplateColumns: "1fr 200px 150px 180px 90px 110px", gap: 14 }}>
+        <div className="tbl-head" style={{ display: "grid", gridTemplateColumns: "38px 1fr 220px 180px 140px 90px 32px", gap: 14 }}>
+          <div />
           <div>Archivo</div>
           <div>Cuenta</div>
           <div>Estado</div>
           <div>Período</div>
           <div className="r">Banco</div>
-          <div className="r">Acción</div>
+          <div />
         </div>
 
-        {byMonth.map(([month, items]) => (
-          <div key={month}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", background: "var(--bg)", borderBottom: "1px solid var(--line-2)" }}>
-              <span className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)" }}>{month}</span>
-              <span className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>{items.length} cartola(s)</span>
+        {byMonth.map(([month, items]) => {
+          const allOk = items.every((s) => statusChip(s.status) === "ok");
+          return (
+            <div key={month}>
+              {/* timeline-head */}
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", background: "var(--bg)", borderBottom: "1px solid var(--line-2)" }}>
+                <span className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)" }}>{month}</span>
+                <span className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>{items.length} cartola(s){allOk ? " · todas OK" : ""}</span>
+              </div>
+              {items.map((s) => {
+                const acc = accounts.find((a) => a.id === s.account_id);
+                const accName = acc?.name;
+                const isCredit = acc?.account_type === "credit";
+                const kind = fileKind(s.filename);
+                const tone = kind.tone;
+                const chipTone = statusChip(s.status);
+                const prog = statusProgress(s.status);
+                const isErr = chipTone === "err";
+                const isWarn = chipTone === "warn";
+                return (
+                  <Link
+                    key={s.id}
+                    href={`/statements/${s.id}`}
+                    className="tbl-row"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "38px 1fr 220px 180px 140px 90px 32px",
+                      gap: 14,
+                      textDecoration: "none",
+                      color: "inherit",
+                      background: isErr ? "rgba(232,122,91,0.04)" : isWarn ? "rgba(230,184,92,0.03)" : undefined,
+                    }}
+                  >
+                    {/* file-mark: 38×46 con corner-fold via gradient */}
+                    <div
+                      className="mono"
+                      style={{
+                        width: 38,
+                        height: 46,
+                        background: "var(--bg-3)",
+                        border: "1px solid var(--line)",
+                        borderRadius: 5,
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: 9,
+                        fontWeight: 600,
+                        letterSpacing: "0.06em",
+                        color: FILE_TONE[tone],
+                        position: "relative",
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          right: 0,
+                          width: 10,
+                          height: 10,
+                          background: "linear-gradient(135deg, transparent 50%, var(--bg) 50%)",
+                          borderLeft: "1px solid var(--line)",
+                          borderBottom: "1px solid var(--line)",
+                        }}
+                      />
+                      {kind.label}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {s.filename}
+                        {s.bank_detected ? <span className="mono" style={{ fontSize: 10, color: "var(--text-3)", background: "var(--bg-3)", padding: "1px 6px", borderRadius: 99, fontWeight: 400 }}>{s.bank_detected.toUpperCase()}</span> : null}
+                      </div>
+                      <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3, display: "flex", gap: 10 }}>
+                        <span>{kind.label}</span>
+                      </div>
+                    </div>
+                    <div className="mono" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-2)" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: isCredit ? "var(--rust)" : "var(--acc)" }} />
+                      <span>{accName ?? "—"}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span className={`chip ${chipTone}`}><span className="sw" />{s.status}</span>
+                      <div style={{ width: "100%", height: 3, background: "var(--bg-3)", borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: prog.width, background: prog.color }} />
+                      </div>
+                    </div>
+                    <div className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>
+                      {s.period_start && s.period_end ? `${s.period_start} → ${s.period_end}` : "—"}
+                    </div>
+                    <div className="mono r" style={{ fontSize: 11, color: "var(--text-3)" }}>{s.bank_detected ?? "—"}</div>
+                    <div className="r" onClick={(e) => e.preventDefault()} style={{ color: "var(--text-3)", fontSize: 14 }}>
+                      <button className="btn ghost" style={{ padding: "4px 8px" }} title="Reprocesar" onClick={(e) => { e.preventDefault(); void reprocess(s.id); }}>⟳</button>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
-            {items.map((s) => {
-              const accName = accounts.find((a) => a.id === s.account_id)?.name;
-              return (
-                <Link
-                  key={s.id}
-                  href={`/statements/${s.id}`}
-                  className="tbl-row"
-                  style={{ display: "grid", gridTemplateColumns: "1fr 200px 150px 180px 90px 110px", gap: 14, textDecoration: "none", color: "inherit" }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.filename}</div>
-                  </div>
-                  <div className="mono" style={{ fontSize: 12, color: "var(--text-2)" }}>{accName ?? "—"}</div>
-                  <div>
-                    <span className={`chip ${statusChip(s.status)}`}><span className="sw" />{s.status}</span>
-                  </div>
-                  <div className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>
-                    {s.period_start && s.period_end ? `${s.period_start} → ${s.period_end}` : "—"}
-                  </div>
-                  <div className="mono r" style={{ fontSize: 11, color: "var(--text-3)" }}>{s.bank_detected ?? "—"}</div>
-                  <div className="r" onClick={(e) => e.preventDefault()}>
-                    <button className="btn ghost" onClick={(e) => { e.preventDefault(); void reprocess(s.id); }}>Reprocesar</button>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+          );
+        })}
         {statements.length === 0 ? (
           <div className="empty"><div className="empty-mark">∅</div><h4>Sin cartolas</h4><p>No hay cartolas importadas. Sube un PDF para comenzar.</p></div>
         ) : null}

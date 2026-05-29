@@ -69,38 +69,63 @@ const toneStyles: Record<string, { background: string; color: string }> = {
 
 type AccountTrend = PatrimonioAccountTrend["accounts"][number];
 
+// Bank logo palette mirrors the design's `.bank-pill .logo` tones.
+function bankLogoStyle(name: string): { background: string; color: string } {
+  const n = name.toLowerCase();
+  if (n.includes("estado")) return { background: "#FFD100", color: "#000" };
+  if (n.includes("chile")) return { background: "#003DA5", color: "#fff" };
+  if (n.includes("itaú") || n.includes("itau")) return { background: "#EC7000", color: "#fff" };
+  if (n.includes("falabella")) return { background: "#00A859", color: "#fff" };
+  if (n.includes("fintual")) return { background: "#7C3AED", color: "#fff" };
+  if (n.includes("manual") || n.includes("efectivo")) {
+    return { background: "var(--bg-3)", color: "var(--text-3)" };
+  }
+  return { background: "var(--bg-3)", color: "var(--text-3)" };
+}
+
 function Sparkline({ trend }: { trend: AccountTrend }) {
   const points = trend.points;
-  if (!points || points.length < 2) return <div className="h-[28px] w-[88px]" />;
   const delta = Number(trend.delta ?? 0);
-  const color = delta >= 0 ? "var(--acc)" : "var(--rust)";
+  const negative = delta < 0;
+  const color = negative ? "#E87A5B" : "#5EE9B5";
+  if (!points || points.length < 2) {
+    return <svg className="spark block h-10 w-full" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true" />;
+  }
   const values = points.map((p) => Number(p.balance ?? 0));
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
-  const w = 88;
-  const h = 28;
-  const pad = 2;
+  const w = 100;
+  const h = 40;
+  const last = values.length - 1;
+  let lastX = 0;
+  let lastY = 0;
   const coords = values
     .map((v, i) => {
-      const x = pad + (i / (values.length - 1)) * (w - pad * 2);
-      const y = pad + (1 - (v - min) / range) * (h - pad * 2);
+      const x = (i / last) * w;
+      const y = 4 + (1 - (v - min) / range) * (h - 8);
+      if (i === last) {
+        lastX = x;
+        lastY = y;
+      }
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
-      <polyline
-        points={coords}
-        fill="none"
-        stroke={color}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg className="spark block h-10 w-full" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={coords} fill="none" stroke={color} strokeWidth={1.5} />
+      <circle cx={lastX.toFixed(1)} cy={lastY.toFixed(1)} r={2} fill={color} />
     </svg>
   );
 }
+
+const compactMoney = (value: number): string => {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "+";
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1).replace(".", ",")}M`;
+  if (abs >= 1_000) return `${sign}$${Math.round(abs / 1_000)}K`;
+  return `${sign}$${Math.round(abs)}`;
+};
 
 export default function AccountsPage() {
   const router = useRouter();
@@ -114,6 +139,8 @@ export default function AccountsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | Account["account_type"]>("all");
 
   useEffect(() => {
     if (!hasVerified) {
@@ -211,17 +238,47 @@ export default function AccountsPage() {
   }
 
   // ── Grouping & derived metrics ─────────────────────────────────────────
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return accounts.filter((a) => {
+      if (typeFilter !== "all" && a.account_type !== typeFilter) return false;
+      if (!q) return true;
+      const bank = a.institution?.name?.toLowerCase() ?? "";
+      return a.name.toLowerCase().includes(q) || bank.includes(q);
+    });
+  }, [accounts, query, typeFilter]);
+
   const assets = useMemo(
-    () => accounts.filter((a) => a.account_type !== "credit"),
-    [accounts],
+    () => filtered.filter((a) => a.account_type !== "credit"),
+    [filtered],
   );
   const liabilities = useMemo(
-    () => accounts.filter((a) => a.account_type === "credit"),
-    [accounts],
+    () => filtered.filter((a) => a.account_type === "credit"),
+    [filtered],
   );
 
+  const typeCounts = useMemo(() => {
+    const c = { all: accounts.length, checking: 0, credit: 0, savings: 0, cash: 0 };
+    for (const a of accounts) c[a.account_type] += 1;
+    return c;
+  }, [accounts]);
+
+  const bankNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const a of accounts) if (a.institution?.name) names.add(a.institution.name);
+    return Array.from(names);
+  }, [accounts]);
+
+  // Section-head totals follow the visible (filtered) rows.
   const assetsTotal = assets.reduce((sum, a) => sum + asNumber(a.balance), 0);
   const liabilitiesTotal = liabilities.reduce((sum, a) => sum + asNumber(a.balance), 0);
+  // KPI totals always reflect the full portfolio.
+  const allAssetsTotal = accounts
+    .filter((a) => a.account_type !== "credit")
+    .reduce((sum, a) => sum + asNumber(a.balance), 0);
+  const allLiabilitiesTotal = accounts
+    .filter((a) => a.account_type === "credit")
+    .reduce((sum, a) => sum + asNumber(a.balance), 0);
   const netWorth = accounts.reduce((sum, a) => sum + asNumber(a.balance), 0);
   const bankCount = new Set(
     accounts.map((a) => a.institution_id).filter((id): id is string => Boolean(id)),
@@ -233,7 +290,13 @@ export default function AccountsPage() {
     return map;
   }, [accountTrends]);
 
-  const GRID = "grid grid-cols-[46px_1fr_140px_90px_160px] gap-3.5 items-center";
+  // Matches the design's 7-column accounts grid.
+  const GRID = {
+    display: "grid",
+    gridTemplateColumns: "46px 1fr 200px 160px 160px 80px 32px",
+    gap: 14,
+    alignItems: "center",
+  } as const;
 
   function Row({ account }: { account: Account }) {
     const tone = typeTone[account.account_type];
@@ -241,60 +304,87 @@ export default function AccountsPage() {
     const pct = netWorth !== 0 ? Math.abs((balance / netWorth) * 100) : 0;
     const negative = balance < 0;
     const trend = trendMap.get(account.id);
+    const bankName = account.institution?.name ?? "Manual";
+    const delta = trend ? Number(trend.delta ?? 0) : 0;
+    const deltaUp = delta >= 0;
     return (
       <div
-        className={`${GRID} cursor-pointer border-b border-[color:var(--line-2)] px-4 py-3.5 last:border-0 hover:bg-[color:var(--bg-3)]`}
+        className="tbl-row-acc cursor-pointer border-b border-[color:var(--line-2)] px-4 py-3.5 last:border-0 hover:bg-[color:var(--bg-3)]"
+        style={GRID}
         onClick={() => editAccount(account)}
       >
         <div
-          className="grid h-[46px] w-[46px] place-items-center rounded-[10px] font-mono text-[13px] font-semibold"
+          className="grid h-[46px] w-[46px] place-items-center rounded-[10px] font-mono text-[13px] font-semibold tracking-[-0.02em]"
           style={toneStyles[tone]}
         >
           {initials(account.name)}
         </div>
         <div className="min-w-0">
-          <div className="truncate text-[14px] font-medium text-[color:var(--text)]">{account.name}</div>
+          <div className="flex items-center gap-2 truncate text-[14px] font-medium tracking-[-0.005em] text-[color:var(--text)]">
+            {account.name}
+          </div>
           <div className="mt-[3px] font-mono text-[11px] uppercase tracking-[0.04em] text-[color:var(--text-3)]">
             {typeLabels[account.account_type]} · {account.currency}
           </div>
         </div>
         <div>
-          <span className="chip">
-            <span className="sw" />
-            {account.institution?.name ?? "Manual"}
+          <span
+            className="inline-flex items-center gap-2 rounded-[6px] border border-[color:var(--line)] bg-[color:var(--bg-3)] px-3 py-[5px] text-[12px] text-[color:var(--text-2)]"
+          >
+            <span
+              className="grid h-[18px] w-[18px] place-items-center rounded-[4px] font-mono text-[9px] font-bold"
+              style={bankLogoStyle(bankName)}
+            >
+              {bankName.charAt(0).toUpperCase()}
+            </span>
+            {bankName}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          {trend ? <Sparkline trend={trend} /> : <div className="h-[28px] w-[88px]" />}
-          {trend && trend.delta_percent != null ? (
+        <div
+          className="text-right font-mono text-[16px] font-medium tabular-nums"
+          style={{ color: negative ? "var(--rust)" : undefined }}
+        >
+          {formatMoney(balance, account.currency)}
+          {trend ? (
             <span
-              className="font-mono text-[10px]"
-              style={{ color: Number(trend.delta) >= 0 ? "var(--acc)" : "var(--rust)" }}
+              className="mt-[3px] block text-[11px] font-normal tracking-[0.02em]"
+              style={{ color: deltaUp ? "var(--acc)" : "var(--rust)" }}
             >
-              {Number(trend.delta) >= 0 ? "+" : ""}
-              {Number(trend.delta_percent).toFixed(1)}%
+              {compactMoney(delta)}
             </span>
           ) : null}
         </div>
-        <div
-          className="flex items-center justify-end gap-3 text-right"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className={`font-mono text-[16px] font-medium num ${negative ? "text-[color:var(--rust)]" : "text-[color:var(--text)]"}`}>
-            {formatMoney(balance, account.currency)}
-            <span className="mt-[3px] block font-normal text-[11px] text-[color:var(--text-3)]">
-              {pct.toFixed(1)}% patr.
-            </span>
+        <div className="flex flex-col items-end gap-1">
+          <Sparkline trend={trend ?? ({ points: [] } as unknown as AccountTrend)} />
+          {trend ? (
             <span
-              className="mt-[4px] block h-[3px] w-full overflow-hidden rounded-full"
-              style={{ background: "var(--bg-3)" }}
+              className="font-mono text-[11px]"
+              style={{ color: deltaUp ? "var(--acc)" : "var(--rust)" }}
             >
-              <span
-                className="block h-full rounded-full"
-                style={{ width: `${Math.min(pct, 100)}%`, background: "var(--acc)" }}
-              />
+              {deltaUp ? "▲ " : "▼ "}
+              {compactMoney(delta)}
             </span>
-          </div>
+          ) : (
+            <span className="font-mono text-[11px] text-[color:var(--text-3)]">−</span>
+          )}
+        </div>
+        <div
+          className="text-right font-mono text-[13px] font-medium tabular-nums"
+          style={{ color: negative ? "var(--rust)" : "var(--text-2)" }}
+        >
+          {negative ? "−" : ""}
+          {pct.toFixed(1).replace(".", ",")}%
+          <span
+            className="mt-1 block h-[2px] overflow-hidden rounded-[1px]"
+            style={{ background: "var(--bg-3)" }}
+          >
+            <span
+              className="block h-full rounded-[1px]"
+              style={{ width: `${Math.min(pct, 100)}%`, background: negative ? "var(--rust)" : "var(--acc)" }}
+            />
+          </span>
+        </div>
+        <div className="flex justify-end text-[color:var(--text-3)]" onClick={(e) => e.stopPropagation()}>
           <ConfirmButton
             title="Eliminar cuenta"
             description="Esta acción eliminará la cuenta si no tiene dependencias activas."
@@ -302,7 +392,7 @@ export default function AccountsPage() {
             onConfirm={() => deleteAccount(account.id)}
             className="text-[color:var(--text-3)] hover:text-[color:var(--rust)]"
           >
-            ✕
+            ⋯
           </ConfirmButton>
         </div>
       </div>
@@ -350,9 +440,11 @@ export default function AccountsPage() {
           </div>
           <div className="val">
             <span className="cu">CLP</span>
-            <span className="pos">{formatMoney(assetsTotal).replace(/[^\d.,\-]/g, "")}</span>
+            <span className="pos">{formatMoney(allAssetsTotal).replace(/[^\d.,\-]/g, "")}</span>
           </div>
-          <div className="sub">{assets.length} cuentas</div>
+          <div className="sub">
+            {accounts.filter((a) => a.account_type !== "credit").length} cuentas · {bankCount} bancos
+          </div>
         </div>
         <div className="kpi r">
           <div className="lbl">
@@ -361,9 +453,11 @@ export default function AccountsPage() {
           </div>
           <div className="val">
             <span className="cu">CLP</span>
-            <span className="neg">{formatMoney(liabilitiesTotal).replace(/[^\d.,\-]/g, "")}</span>
+            <span className="neg">{formatMoney(allLiabilitiesTotal).replace(/[^\d.,\-]/g, "")}</span>
           </div>
-          <div className="sub">{liabilities.length} tarjetas</div>
+          <div className="sub">
+            {accounts.filter((a) => a.account_type === "credit").length} tarjetas
+          </div>
         </div>
         <div className="kpi on">
           <div className="lbl">
@@ -386,7 +480,7 @@ export default function AccountsPage() {
           <div className="val num">
             {bankCount} · {new Set(accounts.map((a) => a.account_type)).size}
           </div>
-          <div className="sub">{institutions.length} instituciones disponibles</div>
+          <div className="sub">{bankNames.length > 0 ? bankNames.join(" · ") : "sin banco"}</div>
         </div>
       </section>
 
@@ -477,6 +571,40 @@ export default function AccountsPage() {
         </div>
       ) : null}
 
+      {/* Filters */}
+      {!isLoading && accounts.length > 0 ? (
+        <div className="filters">
+          <div className="filt-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              placeholder="Buscar por nombre o banco…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div className="seg" style={{ marginLeft: "auto" }}>
+            <button className={typeFilter === "all" ? "on" : ""} onClick={() => setTypeFilter("all")}>
+              Todas · {typeCounts.all}
+            </button>
+            <button className={typeFilter === "checking" ? "on" : ""} onClick={() => setTypeFilter("checking")}>
+              Corrientes · {typeCounts.checking}
+            </button>
+            <button className={typeFilter === "credit" ? "on" : ""} onClick={() => setTypeFilter("credit")}>
+              Crédito · {typeCounts.credit}
+            </button>
+            <button className={typeFilter === "savings" ? "on" : ""} onClick={() => setTypeFilter("savings")}>
+              Ahorro · {typeCounts.savings}
+            </button>
+            <button className={typeFilter === "cash" ? "on" : ""} onClick={() => setTypeFilter("cash")}>
+              Efectivo · {typeCounts.cash}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Accounts table */}
       {isLoading ? (
         <div className="flex items-center gap-2 py-10 font-mono text-[13px] text-[color:var(--text-3)]">
@@ -495,12 +623,17 @@ export default function AccountsPage() {
         </div>
       ) : (
         <div className="tbl">
-          <div className={`${GRID} tbl-head`}>
+          <div
+            className="tbl-head font-mono"
+            style={{ ...GRID, padding: "11px 16px" }}
+          >
             <div />
             <div>Cuenta</div>
             <div>Banco</div>
-            <div>Tendencia 30d</div>
-            <div className="r">Saldo · % patr.</div>
+            <div className="r">Saldo</div>
+            <div className="r">Tendencia · 30d</div>
+            <div className="r">% patr.</div>
+            <div />
           </div>
 
           {assets.length > 0 ? (

@@ -6,7 +6,8 @@ import { usePeriodStore } from "@/stores/period";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const CAT_TONES = ["", "r", "g", "v", "b"] as const;
+const CAT_SW = ["var(--acc)", "var(--rust)", "var(--gold)", "var(--blue)", "var(--violet)", "var(--acc)"];
+const CHIP_TONES = ["", "r", "g", "b", "v", "k"] as const;
 
 function asNumber(value: string | null | undefined): number {
   return Number(value ?? 0);
@@ -20,10 +21,25 @@ function formatMoney(value: string | number, currency = "CLP"): string {
   }).format(typeof value === "number" ? value : asNumber(value));
 }
 
+function plain(value: string | number, currency = "CLP"): string {
+  return formatMoney(value, currency).replace(/[^\d.,\-]/g, "");
+}
+
 function formatPercent(value: string | null): string {
   if (value === null) return "sin base";
   const number = asNumber(value);
   return `${number > 0 ? "+" : ""}${number.toFixed(1)}%`;
+}
+
+function monthDayLabel(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  const mon = new Date(y, m - 1, d).toLocaleDateString("es-CL", { month: "short" }).replace(".", "");
+  return `${d} ${mon}`;
+}
+
+function monthShortUpper(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("es-CL", { month: "short" }).replace(".", "").toUpperCase();
 }
 
 export default function DashboardPage() {
@@ -66,11 +82,8 @@ export default function DashboardPage() {
 
   // ── Flow chart geometry ──────────────────────────────────────────────
   const trendData = trends?.trends ?? [];
-  const flowMax = Math.max(
-    1,
-    ...trendData.flatMap((t) => [asNumber(t.income), asNumber(t.expenses)]),
-  );
-  const PL = 8;
+  const flowMax = Math.max(1, ...trendData.flatMap((t) => [asNumber(t.income), asNumber(t.expenses)]));
+  const PL = 40;
   const PR = 600;
   const PB = 240;
   const H = PB;
@@ -79,12 +92,39 @@ export default function DashboardPage() {
   const netPoints = trendData.map((t, i) => {
     const cx = PL + stepW * i + stepW / 2;
     const value = asNumber(t.net);
-    const y = PB - Math.min(1, Math.max(-0.2, value / flowMax)) * H;
+    const y = PB - Math.min(1, Math.max(-0.2, value / flowMax)) * H * 6;
     return `${i === 0 ? "M" : "L"}${cx.toFixed(1)},${Math.max(4, y).toFixed(1)}`;
   });
 
+  // ── Income / expense sparkline geometry ──────────────────────────────
+  const spark = (key: "income" | "expenses" | "net") => {
+    if (trendData.length < 2) return "";
+    const vals = trendData.map((t) => asNumber(t[key]));
+    const mn = Math.min(...vals);
+    const mx = Math.max(...vals);
+    const span = mx - mn || 1;
+    const w = 200;
+    const stepX = w / (vals.length - 1);
+    return vals
+      .map((v, i) => `${(i * stepX).toFixed(1)},${(28 - ((v - mn) / span) * 24).toFixed(1)}`)
+      .join(" ");
+  };
+
   return (
     <div className="content dash-section">
+      <style jsx>{`
+        .move {
+          cursor: pointer;
+          border-radius: 6px;
+          transition: background 0.1s;
+        }
+        .move:hover {
+          background: var(--bg-3);
+          margin: 0 -10px;
+          padding-left: 10px;
+          padding-right: 10px;
+        }
+      `}</style>
       {/* Title row */}
       <div className="title-row">
         <div>
@@ -108,124 +148,183 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {error ? <div className="insight err" style={{ marginBottom: 20 }}><div className="insight-mark">!</div><div className="insight-body"><div className="txt">{error}</div></div><span /></div> : null}
+      {error ? (
+        <div className="insight err" style={{ marginBottom: 20 }}>
+          <div className="insight-mark">!</div>
+          <div className="insight-body">
+            <div className="txt">{error}</div>
+          </div>
+          <span />
+        </div>
+      ) : null}
 
-      {/* Hero KPI strip */}
-      <section className="strip">
-        <div className="kpi">
+      {/* Hero KPI strip — 1.5fr 1fr 1fr 1fr */}
+      <section
+        className="strip"
+        style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr", marginBottom: 24 }}
+      >
+        <div
+          className="kpi"
+          style={{ padding: "22px 24px", background: "linear-gradient(160deg, var(--bg-3) 0%, var(--bg-2) 100%)" }}
+        >
           <div className="lbl">
             <span className="sw" />
-            Ahorro neto
+            Ahorro neto · {summary?.period.toString().toLowerCase() ?? "periodo"}
           </div>
           <div className="val big">
             <span className="cu">{currency}</span>
             <span className={net >= 0 ? "pos" : "neg"}>
-              {net >= 0 ? "+" : ""}
-              {isLoading ? "—" : cur(net).replace(/[^\d.,\-]/g, "")}
+              {net >= 0 ? "+" : "−"}
+              {isLoading ? "—" : plain(Math.abs(net), currency)}
             </span>
           </div>
           <div className="delta">
             <span className={asNumber(summary?.net_change) >= 0 ? "up" : "dn"}>
               {asNumber(summary?.net_change) >= 0 ? "▲" : "▼"} {formatPercent(summary?.net_change ?? null)}
             </span>
-            <span>vs. periodo previo</span>
+            <span>vs. periodo previo · </span>
+            <span>
+              tasa <strong style={{ color: "var(--text)" }}>{asNumber(summary?.savings_rate).toFixed(1)}%</strong>
+            </span>
           </div>
+          <svg className="spark" viewBox="0 0 200 32" preserveAspectRatio="none" style={{ height: 32, marginTop: 6 }}>
+            {spark("net") ? (
+              <polyline fill="none" stroke="#5EE9B5" strokeWidth="1.5" points={spark("net")} />
+            ) : null}
+          </svg>
         </div>
-        <div className="kpi">
+        <div className="kpi" style={{ padding: "22px 24px" }}>
           <div className="lbl">
             <span className="sw" />
             Ingresos
           </div>
-          <div className="val">{isLoading ? "—" : cur(summary?.income ?? "0")}</div>
+          <div className="val">
+            <span className="cu">{currency}</span>
+            {isLoading ? "—" : plain(summary?.income ?? "0", currency)}
+          </div>
           <div className="delta">
             <span className={asNumber(summary?.income_change) >= 0 ? "up" : "dn"}>
               {asNumber(summary?.income_change) >= 0 ? "▲" : "▼"} {formatPercent(summary?.income_change ?? null)}
             </span>
           </div>
+          <svg className="spark" viewBox="0 0 200 32" preserveAspectRatio="none" style={{ height: 32, marginTop: 6 }}>
+            {spark("income") ? (
+              <polyline fill="none" stroke="#5EE9B5" strokeWidth="1.3" opacity="0.7" points={spark("income")} />
+            ) : null}
+          </svg>
         </div>
-        <div className="kpi r">
+        <div className="kpi r" style={{ padding: "22px 24px" }}>
           <div className="lbl">
             <span className="sw" />
             Gastos
           </div>
-          <div className="val">{isLoading ? "—" : cur(summary?.expenses ?? "0")}</div>
+          <div className="val">
+            <span className="cu">{currency}</span>
+            {isLoading ? "—" : plain(summary?.expenses ?? "0", currency)}
+          </div>
           <div className="delta">
             <span className={asNumber(summary?.expenses_change) <= 0 ? "up" : "dn"}>
               {asNumber(summary?.expenses_change) >= 0 ? "▲" : "▼"} {formatPercent(summary?.expenses_change ?? null)}
             </span>
           </div>
+          <svg className="spark" viewBox="0 0 200 32" preserveAspectRatio="none" style={{ height: 32, marginTop: 6 }}>
+            {spark("expenses") ? (
+              <polyline fill="none" stroke="#E87A5B" strokeWidth="1.3" opacity="0.7" points={spark("expenses")} />
+            ) : null}
+          </svg>
         </div>
-        <div className="kpi g">
+        <div className="kpi g" style={{ padding: "22px 24px" }}>
           <div className="lbl">
             <span className="sw" />
             Tasa de ahorro
           </div>
           <div className="val">{isLoading ? "—" : `${asNumber(summary?.savings_rate).toFixed(1)}%`}</div>
           <div className="delta">{summary?.uncategorized_count ?? 0} sin categoría</div>
+          <svg className="spark" viewBox="0 0 200 32" preserveAspectRatio="none" style={{ height: 32, marginTop: 6 }}>
+            {spark("net") ? (
+              <polyline fill="none" stroke="#E6B85C" strokeWidth="1.3" opacity="0.8" points={spark("net")} />
+            ) : null}
+          </svg>
         </div>
       </section>
 
       {/* Insight banner */}
       {summary && summary.uncategorized_count > 0 ? (
-        <div className="insight">
+        <div className="insight" style={{ padding: "18px 22px", marginBottom: 24 }}>
           <div className="insight-mark serif">¶</div>
           <div className="insight-body">
             <div className="lbl">Por revisar</div>
             <div className="txt">
               Tienes <strong>{summary.uncategorized_count} movimientos sin categoría</strong> en este periodo.{" "}
-              <span className="serif">Categorízalos para mejorar tus métricas.</span>
+              <span className="serif" style={{ color: "var(--text-2)", fontSize: 15 }}>
+                Categorízalos para mejorar tus métricas.
+              </span>
             </div>
           </div>
           <button className="btn ghost" onClick={() => router.push("/review")}>
-            Revisar →
+            Ver detalle →
           </button>
         </div>
       ) : net > 0 ? (
-        <div className="insight ok">
+        <div className="insight ok" style={{ padding: "18px 22px", marginBottom: 24 }}>
           <div className="insight-mark serif">✓</div>
           <div className="insight-body">
             <div className="lbl">Buen mes</div>
             <div className="txt">
               Cerraste con un <strong>ahorro positivo de {cur(net)}</strong>.{" "}
-              <span className="serif">Sigue así.</span>
+              <span className="serif" style={{ color: "var(--text-2)", fontSize: 15 }}>
+                Sigue así.
+              </span>
             </div>
           </div>
           <button className="btn ghost" onClick={() => router.push("/patrimonio")}>
-            Ver patrimonio →
+            Ver detalle →
           </button>
         </div>
       ) : null}
 
       {/* Flow + Top categorías */}
-      <section className="grid gap-6 lg:grid-cols-[1.6fr_1fr]" style={{ marginBottom: 24 }}>
+      <section className="grid gap-6" style={{ gridTemplateColumns: "1.6fr 1fr", marginBottom: 24 }}>
         <div className="panel">
           <div className="panel-head">
             <div>
               <h3>Flujo mensual</h3>
-              <div className="mt-2 flex gap-4 font-mono text-[11px] text-[color:var(--text-3)]">
-                <span className="flex items-center gap-2">
+              <div
+                className="mono flex gap-[18px]"
+                style={{ marginTop: 8, fontSize: 11, color: "var(--text-3)" }}
+              >
+                <span className="flex items-center gap-[7px]">
                   <span style={{ width: 10, height: 2, background: "var(--acc)" }} />
                   Ingresos
                 </span>
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-[7px]">
                   <span style={{ width: 10, height: 2, background: "var(--rust)" }} />
                   Gastos
                 </span>
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-[7px]">
                   <span style={{ width: 10, height: 2, background: "var(--text-3)" }} />
-                  Neto
+                  Ahorro neto
                 </span>
               </div>
             </div>
-            <span className="meta">12m</span>
+            <div className="seg">
+              <button>3m</button>
+              <button>6m</button>
+              <button className="on">12m</button>
+              <button>24m</button>
+            </div>
           </div>
-          <div style={{ height: 260 }}>
-            <svg viewBox="0 0 600 260" preserveAspectRatio="none" style={{ width: "100%", height: "100%", overflow: "visible" }}>
+          <div style={{ position: "relative", height: 280 }}>
+            <svg
+              viewBox="0 0 600 260"
+              preserveAspectRatio="none"
+              style={{ width: "100%", height: "100%", display: "block", overflow: "visible" }}
+            >
               <g stroke="rgba(255,255,255,0.05)">
-                <line x1="0" y1="40" x2="600" y2="40" />
-                <line x1="0" y1="100" x2="600" y2="100" />
-                <line x1="0" y1="160" x2="600" y2="160" />
-                <line x1="0" y1="220" x2="600" y2="220" />
+                <line x1="40" y1="40" x2="600" y2="40" />
+                <line x1="40" y1="100" x2="600" y2="100" />
+                <line x1="40" y1="160" x2="600" y2="160" />
+                <line x1="40" y1="220" x2="600" y2="220" />
               </g>
               {trendData.map((t, i) => {
                 const cx = PL + stepW * i + stepW / 2;
@@ -236,8 +335,8 @@ export default function DashboardPage() {
                   <g key={t.month}>
                     <rect x={cx - barW - 1} y={PB - incH} width={barW} height={incH} fill="#5EE9B5" opacity={last ? 1 : 0.75} rx="1" />
                     <rect x={cx + 1} y={PB - expH} width={barW} height={expH} fill="#E87A5B" opacity={last ? 1 : 0.65} rx="1" />
-                    <text x={cx} y={PB + 16} fill="#807A6E" fontFamily="var(--font-geist-mono)" fontSize="9" textAnchor="middle">
-                      {t.month.slice(5)}
+                    <text x={cx} y={PB + 18} fill="#807A6E" fontFamily="var(--font-geist-mono)" fontSize="9" textAnchor="middle">
+                      {monthShortUpper(t.month)}
                     </text>
                   </g>
                 );
@@ -251,38 +350,32 @@ export default function DashboardPage() {
 
         <div className="panel">
           <div className="panel-head">
-            <h3>Dónde se fue · top 6</h3>
-            <span className="meta">periodo</span>
+            <h3>Donde se fue · top 6</h3>
+            <span className="meta">{summary?.period.toString().toLowerCase() ?? "periodo"}</span>
           </div>
           <div className="flex flex-col gap-[13px]">
             {(summary?.category_expenses ?? []).slice(0, 6).map((c, i) => {
-              const tone = CAT_TONES[i % CAT_TONES.length];
+              const swColor = c.category_color || CAT_SW[i % CAT_SW.length];
               const pct = (asNumber(c.amount) / topCategoryTotal) * 100;
               const totalExp = Math.max(1, asNumber(summary?.expenses));
               const sharePct = Math.round((asNumber(c.amount) / totalExp) * 100);
               return (
                 <div key={c.category_id} className="grid grid-cols-[1fr_auto] gap-x-3.5 gap-y-1.5">
-                  <div className={`cat-name flex items-center gap-2 text-[13px]`}>
-                    <span
-                      className="inline-block h-2 w-2 rounded-[2px]"
-                      style={{ background: c.category_color || `var(--${tone === "r" ? "rust" : tone === "g" ? "gold" : tone === "v" ? "violet" : tone === "b" ? "blue" : "acc"})` }}
-                    />
+                  <div className="flex items-center gap-2 text-[13px]" style={{ color: "var(--text)" }}>
+                    <span className="inline-block h-2 w-2 rounded-[2px]" style={{ background: swColor }} />
                     {c.category_name}
                   </div>
-                  <div className="font-mono text-[13px] num text-right">
-                    {cur(c.amount)} <span className="text-[10px] text-[color:var(--text-3)]">{sharePct}%</span>
+                  <div className="mono num text-right text-[13px]" style={{ color: "var(--text)" }}>
+                    {cur(c.amount)} <span className="text-[10px]" style={{ color: "var(--text-3)", marginLeft: 6 }}>{sharePct}%</span>
                   </div>
-                  <div className="col-span-2 h-[3px] overflow-hidden rounded-[2px]" style={{ background: "var(--bg-3)" }}>
-                    <div
-                      className="h-full rounded-[2px]"
-                      style={{ width: `${Math.max(2, pct)}%`, background: c.category_color || "var(--acc)" }}
-                    />
+                  <div className="col-span-2 overflow-hidden rounded-[2px]" style={{ height: 3, background: "var(--bg-3)" }}>
+                    <div className="h-full rounded-[2px]" style={{ width: `${Math.max(2, pct)}%`, background: swColor }} />
                   </div>
                 </div>
               );
             })}
             {(summary?.category_expenses ?? []).length === 0 && !isLoading ? (
-              <p className="font-mono text-[12px] text-[color:var(--text-3)]">Sin gastos categorizados.</p>
+              <p className="mono text-[12px]" style={{ color: "var(--text-3)" }}>Sin gastos categorizados.</p>
             ) : null}
           </div>
         </div>
@@ -297,36 +390,68 @@ export default function DashboardPage() {
           </button>
         </div>
         <div className="flex flex-col">
-          <div className="grid grid-cols-[80px_1fr_180px_120px] gap-3.5 border-b border-[color:var(--line)] pb-2.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-3)]">
+          <div
+            className="mono grid gap-3.5 uppercase"
+            style={{
+              gridTemplateColumns: "80px 1fr 160px 140px 100px",
+              padding: "0 0 10px",
+              borderBottom: "1px solid var(--line)",
+              fontSize: 10,
+              letterSpacing: "0.12em",
+              color: "var(--text-3)",
+            }}
+          >
             <div>Fecha</div>
             <div>Descripción</div>
             <div>Categoría</div>
+            <div>Cuenta</div>
             <div className="text-right">Monto</div>
           </div>
-          {(summary?.recent_transactions ?? []).map((tx) => (
-            <button
-              key={tx.id}
-              onClick={() => router.push("/transactions")}
-              className="grid grid-cols-[80px_1fr_180px_120px] items-center gap-3.5 border-b border-[color:var(--line-2)] py-3 text-left last:border-0 hover:bg-[color:var(--bg-3)]"
-            >
-              <div className="font-mono text-[11px] text-[color:var(--text-3)]">{tx.date.slice(5)}</div>
-              <div className="min-w-0 truncate text-[13px] font-medium text-[color:var(--text)]">{tx.description}</div>
-              <div>
-                <span className="chip">
-                  <span className="sw" style={tx.category_color ? { background: tx.category_color } : undefined} />
-                  {tx.category_name ?? "Sin categoría"}
-                </span>
-              </div>
-              <div
-                className={`text-right font-mono text-[14px] num font-medium ${tx.movement_type === "income" ? "text-[color:var(--acc)]" : "text-[color:var(--text)]"}`}
+          {(summary?.recent_transactions ?? []).map((tx, i) => {
+            const chipTone = tx.category_name ? CHIP_TONES[i % CHIP_TONES.length] : "k";
+            return (
+              <button
+                key={tx.id}
+                onClick={() => router.push("/transactions")}
+                className="move grid items-center gap-3.5 text-left"
+                style={{
+                  gridTemplateColumns: "80px 1fr 160px 140px 100px",
+                  padding: "12px 0",
+                  borderBottom: "1px solid var(--line-2)",
+                }}
               >
-                {tx.movement_type === "income" ? "+" : "−"}
-                {formatMoney(tx.amount, tx.currency).replace(/[^\d.,]/g, "")}
-              </div>
-            </button>
-          ))}
+                <div className="mono text-[11px]" style={{ color: "var(--text-3)" }}>{monthDayLabel(tx.date)}</div>
+                <div className="min-w-0 text-[13px] font-medium" style={{ color: "var(--text)" }}>
+                  <span className="block truncate">{tx.description}</span>
+                  <span className="mono block text-[11px] font-normal" style={{ color: "var(--text-3)", marginTop: 2 }}>
+                    {tx.category_name ?? "sin categoría"} · {tx.movement_type === "income" ? "ingreso" : "gasto"}
+                  </span>
+                </div>
+                <div>
+                  <span className={`chip ${chipTone}`.trim()}>
+                    <span className="sw" style={tx.category_color ? { background: tx.category_color } : undefined} />
+                    {tx.category_name ?? "Sin categoría"}
+                  </span>
+                </div>
+                <div className="mono flex items-center gap-[7px] text-[11px]" style={{ color: "var(--text-3)" }}>
+                  <span
+                    className="inline-block rounded-[2px]"
+                    style={{ width: 8, height: 8, background: tx.movement_type === "income" ? "var(--acc)" : "var(--rust)" }}
+                  />
+                  <span className="truncate">{tx.account_name}</span>
+                </div>
+                <div
+                  className="mono num text-right text-[14px] font-medium"
+                  style={{ color: tx.movement_type === "income" ? "var(--acc)" : "var(--text)" }}
+                >
+                  {tx.movement_type === "income" ? "+" : "−"}
+                  {plain(tx.amount, tx.currency)}
+                </div>
+              </button>
+            );
+          })}
           {(summary?.recent_transactions ?? []).length === 0 && !isLoading ? (
-            <p className="py-6 font-mono text-[12px] text-[color:var(--text-3)]">Sin movimientos recientes.</p>
+            <p className="mono text-[12px]" style={{ padding: "24px 0", color: "var(--text-3)" }}>Sin movimientos recientes.</p>
           ) : null}
         </div>
       </section>

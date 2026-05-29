@@ -209,7 +209,7 @@ export default function GoalsPage() {
         <div style={{ padding: "22px 26px 16px", display: "flex", alignItems: "flex-start", gap: 18 }} onClick={() => edit(goal)}>
           <div
             style={{
-              width: featured ? 48 : 44, height: featured ? 48 : 44, borderRadius: 12, display: "grid", placeItems: "center", flex: "0 0 auto",
+              width: 48, height: 48, borderRadius: 12, display: "grid", placeItems: "center", flex: "0 0 48px",
               background: tone === "green" ? "rgba(94,233,181,0.12)" : tone === "gold" ? "rgba(230,184,92,0.12)" : tone === "violet" ? "rgba(180,156,255,0.12)" : "rgba(122,176,255,0.12)",
               color: tone === "green" ? "var(--acc)" : tone === "gold" ? "var(--gold)" : tone === "violet" ? "var(--violet)" : "var(--blue)",
               fontFamily: "var(--font-instrument-serif), serif", fontStyle: "italic", fontSize: 22,
@@ -218,41 +218,50 @@ export default function GoalsPage() {
             {goal.name.charAt(0).toUpperCase()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: featured ? 24 : 18, fontWeight: featured ? 400 : 500, letterSpacing: "-0.01em", marginBottom: 4 }}>{goal.name}</div>
-            <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: featured ? 24 : 18, fontWeight: featured ? 400 : 500, letterSpacing: featured ? "-0.02em" : "-0.01em", marginBottom: 4 }}>{goal.name}</div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", letterSpacing: "0.04em", display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
               <span>{goal.target_date ? `META ${shortDate(goal.target_date)}` : "SIN FECHA · OBJETIVO ABIERTO"}</span>
               <span>·</span>
               <span>{goal.currency}</span>
             </div>
           </div>
-          <span className={`chip ${status.cls === "risk" ? "err" : status.cls === "warn" ? "warn" : status.cls === "done" ? "" : "ok"}`} style={{ flex: "0 0 auto" }}>{status.label}</span>
+          <span
+            className="mono"
+            style={{
+              flex: "0 0 auto", padding: "4px 10px", borderRadius: 99, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 500,
+              color: status.cls === "ok" ? "var(--acc)" : status.cls === "warn" ? "var(--gold)" : status.cls === "risk" ? "var(--rust)" : "var(--text-2)",
+              background: status.cls === "ok" ? "rgba(94,233,181,0.12)" : status.cls === "warn" ? "rgba(230,184,92,0.12)" : status.cls === "risk" ? "rgba(232,122,91,0.12)" : "rgba(255,255,255,0.06)",
+            }}
+          >{status.label}</span>
         </div>
 
         <div style={{ padding: "0 26px 22px" }} onClick={() => edit(goal)}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
-            <div className="num" style={{ fontSize: featured ? 44 : 30, fontWeight: 300, letterSpacing: "-0.02em" }}>
+            <div className="num" style={{ fontSize: featured ? 44 : 30, fontWeight: featured ? 200 : 300, letterSpacing: "-0.02em" }}>
               <span className="mono" style={{ fontSize: 13, color: "var(--text-3)", marginRight: 6 }}>{goal.currency}</span>{fmt(current)}
             </div>
             <div className="mono" style={{ fontSize: 12, color: "var(--text-3)", textAlign: "right" }}>
               META<strong style={{ color: "var(--text-2)", display: "block", fontSize: 16, marginTop: 4, fontWeight: 500 }}>${fmt(target)}</strong>
             </div>
           </div>
-          <div style={{ position: "relative", marginBottom: 6 }}>
+          <div style={{ position: "relative", marginBottom: 14 }}>
             <div style={{ height: 8, background: "var(--bg-3)", borderRadius: 4, overflow: "hidden", position: "relative" }}>
               <div
                 style={{
-                  height: "100%", borderRadius: 4, width: `${Math.min(goal.percent, 100)}%`,
+                  height: "100%", borderRadius: 4, width: `${Math.min(goal.percent, 100)}%`, position: "relative",
                   background: fillClass(goal) === "warn" ? "var(--gold)" : fillClass(goal) === "risk" ? "var(--rust)" : "var(--acc)",
                 }}
-              />
+              >
+                <span style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 6, background: "var(--text)", opacity: 0.3, borderRadius: "0 4px 4px 0" }} />
+              </div>
             </div>
             <div style={{ position: "absolute", top: -3, bottom: -3, width: 2, background: "var(--text-2)", opacity: 0.5, left: "50%" }}>
-              <span className="mono" style={{ position: "absolute", top: -16, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: "var(--text-3)", whiteSpace: "nowrap" }}>MITAD</span>
+              <span className="mono" style={{ position: "absolute", top: -18, left: "50%", transform: "translateX(-50%)", fontSize: 9, letterSpacing: "0.06em", color: "var(--text-3)", whiteSpace: "nowrap" }}>MITAD</span>
             </div>
           </div>
           {featured && sparkMonths.length > 0 ? (
             <div style={{ marginTop: 18 }}>
-              <span className="label" style={{ display: "block", marginBottom: 8 }}>Historial de aportes</span>
+              <span className="label" style={{ display: "block", marginBottom: 8, letterSpacing: "0.1em" }}>Aportes · últimos {sparkMonths.length} meses</span>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 48 }}>
                 {sparkMonths.map((s) => (
                   <div key={s.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }} title={`${s.key}: $${fmt(s.total)}`}>
@@ -277,7 +286,7 @@ export default function GoalsPage() {
             <span className="num" style={{ fontSize: 13, fontWeight: 500 }}>{remaining > 0 ? `$${fmt(remaining)}` : "✓ logrado"}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <span className="label">ETA</span>
+            <span className="label">A este ritmo</span>
             <span className="num" style={{ fontSize: 13, fontWeight: 500, color: etaColor }}>{etaLabel}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>

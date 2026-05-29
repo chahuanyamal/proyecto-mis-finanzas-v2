@@ -86,6 +86,9 @@ export default function CompararPage() {
 
   const labelA = monthLabel(monthA);
   const labelB = monthLabel(monthB);
+  const daysIn = (ym: string) => { const [y, m] = ym.split("-").map(Number); return new Date(y, m, 0).getDate(); };
+  const daysA = daysIn(monthA);
+  const daysB = daysIn(monthB);
 
   const categoryRows = useMemo(() => {
     const map = new Map<string, { name: string; a: number; b: number }>();
@@ -120,7 +123,7 @@ export default function CompararPage() {
             Comparar <span className="serif">períodos</span>
           </h1>
           <div className="sub">
-            PERIODO A: <strong>{labelA.name} {labelA.year}</strong> · PERIODO B: <strong>{labelB.name} {labelB.year}</strong>
+            PERIODO A: <strong>{labelA.name} {labelA.year}</strong> · PERIODO B: <strong>{labelB.name} {labelB.year}</strong> · {daysA} días vs. {daysB} días
           </div>
         </div>
       </div>
@@ -136,7 +139,7 @@ export default function CompararPage() {
             type="month"
             value={monthA}
             onChange={(e) => setMonthA(e.target.value)}
-            className="serif bg-transparent text-[28px] italic tracking-[-0.015em] text-[color:var(--text)] outline-none"
+            className="serif bg-transparent text-[34px] italic tracking-[-0.015em] text-[color:var(--text)] outline-none"
           />
         </label>
         <div className="serif text-center text-[30px] italic text-[color:var(--text-3)]">vs.</div>
@@ -149,7 +152,7 @@ export default function CompararPage() {
             type="month"
             value={monthB}
             onChange={(e) => setMonthB(e.target.value)}
-            className="serif bg-transparent text-[28px] italic tracking-[-0.015em] text-[color:var(--text)] outline-none"
+            className="serif bg-transparent text-[34px] italic tracking-[-0.015em] text-[color:var(--text)] outline-none"
           />
         </label>
       </div>
@@ -239,21 +242,22 @@ export default function CompararPage() {
                     <div
                       key={r.name}
                       className="grid items-center border-b py-3 last:border-0"
-                      style={{ gridTemplateColumns: "1fr 1fr 90px", columnGap: 14, borderColor: "var(--line-2)" }}
+                      style={{ gridTemplateColumns: "1fr 70px 1fr 90px", columnGap: 14, borderColor: "var(--line-2)" }}
                     >
                       <div className="flex items-center gap-2 text-[13px]">
                         <span className="inline-block h-2 w-2 rounded-[2px]" style={{ background: swColor }} />
                         {r.name}
                       </div>
+                      <div />
                       <div className="grid grid-rows-2 gap-[3px]">
                         <div className="relative h-3.5 overflow-hidden rounded-[2px]" style={{ background: "var(--bg-3)" }}>
                           <div className="absolute inset-y-0 left-0 rounded-[2px]" style={{ width: `${(r.a / catMax) * 100}%`, background: "var(--acc)" }} />
-                          <span className="mono absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-white/80 num">{plain(r.a, cur)}</span>
+                          <span className="mono num absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: "white", opacity: 0.8, mixBlendMode: "difference", textShadow: "0 0 4px rgba(0,0,0,0.4)" }}>{plain(r.a, cur)}</span>
                           <span className="mono absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] tracking-[0.04em] text-[color:var(--text-3)]">A</span>
                         </div>
                         <div className="relative h-3.5 overflow-hidden rounded-[2px]" style={{ background: "var(--bg-3)" }}>
                           <div className="absolute inset-y-0 left-0 rounded-[2px]" style={{ width: `${(r.b / catMax) * 100}%`, background: "var(--gold)" }} />
-                          <span className="mono absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-white/80 num">{plain(r.b, cur)}</span>
+                          <span className="mono num absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: "white", opacity: 0.8, mixBlendMode: "difference", textShadow: "0 0 4px rgba(0,0,0,0.4)" }}>{plain(r.b, cur)}</span>
                           <span className="mono absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] tracking-[0.04em] text-[color:var(--text-3)]">B</span>
                         </div>
                       </div>

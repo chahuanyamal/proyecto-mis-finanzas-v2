@@ -137,6 +137,38 @@ export default function PatrimonioPage() {
   const firstHistory = historyPoints.length ? n(historyPoints[0].value) : 0;
   const yearPct = firstHistory !== 0 ? ((total - firstHistory) / Math.abs(firstHistory)) * 100 : null;
 
+  // Editorial volume line: "Vol. XXVI · N° V · Mayo 2026"
+  const volLine = useMemo(() => {
+    const now = new Date();
+    const roman = (x: number) => {
+      const map: Array<[number, string]> = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+      let r = "";
+      for (const [v, s] of map) while (x >= v) { r += s; x -= v; }
+      return r;
+    };
+    const monthName = now.toLocaleDateString("es-CL", { month: "long" });
+    const cap = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+    return `Vol. ${roman(now.getFullYear() - 2000)} · N° ${roman(now.getMonth() + 1)} · ${cap} ${now.getFullYear()}`;
+  }, []);
+
+  // Best month-over-month gain across history.
+  const bestMonth = useMemo(() => {
+    const pts = historyPoints.map((p) => ({ month: p.month, value: n(p.value) }));
+    let best: { label: string; delta: number } | null = null;
+    for (let i = 1; i < pts.length; i++) {
+      const d = pts[i].value - pts[i - 1].value;
+      if (best === null || d > best.delta) best = { label: monthShort(pts[i].month).toLowerCase(), delta: d };
+    }
+    return best;
+  }, [historyPoints]);
+
+  // Evolution footer summary cells.
+  const evoFoot = useMemo(() => {
+    if (historyPoints.length === 0) return null;
+    const prev = historyPoints.length >= 2 ? n(historyPoints[historyPoints.length - 2].value) : null;
+    return { first: firstHistory, prev, prevLabel: historyPoints.length >= 2 ? monthShort(historyPoints[historyPoints.length - 2].month).toLowerCase() : "" };
+  }, [historyPoints, firstHistory]);
+
   return (
     <div className="content">
       <div className="title-row">
@@ -166,12 +198,19 @@ export default function PatrimonioPage() {
             <div>
               <div
                 className="mono flex items-center gap-3.5 uppercase"
+                style={{ fontSize: 10, letterSpacing: "0.22em", color: "var(--gold)", marginBottom: 18 }}
+              >
+                {volLine}
+                <span style={{ flex: 1, height: 1, maxWidth: 160, background: "var(--line-2)" }} />
+              </div>
+              <div
+                className="mono uppercase"
                 style={{ fontSize: 11, letterSpacing: "0.18em", color: "var(--text-3)", marginBottom: 14 }}
               >
                 Patrimonio neto · hoy
               </div>
-              <div className="serif flex items-baseline gap-4" style={{ fontSize: 96, lineHeight: 0.85, letterSpacing: "-0.04em" }}>
-                <span style={{ fontSize: 26, fontStyle: "italic", fontWeight: 300, color: "var(--text-3)" }}>{currency}</span>
+              <div className="serif flex items-baseline gap-[18px]" style={{ fontSize: 140, fontWeight: 400, lineHeight: 0.85, letterSpacing: "-0.04em" }}>
+                <span style={{ fontSize: 26, fontStyle: "italic", fontWeight: 300, letterSpacing: 0, color: "var(--text-3)" }}>{currency}</span>
                 <span style={{ color: total >= 0 ? "var(--acc)" : "var(--rust)" }}>{plain(total, currency)}</span>
               </div>
               <div className="mono flex flex-wrap items-center gap-6" style={{ marginTop: 22, fontSize: 13, color: "var(--text-2)" }}>
@@ -180,6 +219,11 @@ export default function PatrimonioPage() {
                 ) : null}
                 {compareTotal ? (
                   <span><span style={{ color: n(compareTotal.delta) >= 0 ? "var(--acc)" : "var(--rust)" }}>{signed(n(compareTotal.delta), currency)}</span> · vs. mes anterior</span>
+                ) : null}
+                {bestMonth ? (
+                  <span className="serif" style={{ fontSize: 15, color: "var(--text-3)" }}>
+                    Mejor mes: {bestMonth.label} · {signed(bestMonth.delta, currency)}
+                  </span>
                 ) : null}
               </div>
             </div>
@@ -194,9 +238,9 @@ export default function PatrimonioPage() {
               <SideRow tone="g" label="Cuentas">
                 <span className="num">{visibleAccounts.length} <span className="cu" style={{ fontSize: 11, color: "var(--text-3)", marginLeft: 4 }}>de {data?.account_count ?? 0}</span></span>
               </SideRow>
-              <SideRow tone="v" label="Vs. mes anterior">
-                <span className="num" style={{ fontSize: 16, color: n(compareTotal?.delta) >= 0 ? "var(--acc)" : "var(--rust)" }}>
-                  {formatPercent(compareTotal?.delta_percent ?? null)}
+              <SideRow tone="v" label="Último snapshot">
+                <span className="mono num" style={{ fontSize: 14, color: "var(--text-3)" }}>
+                  {historyPoints.length ? snapDate(historyPoints[historyPoints.length - 1].month) : "—"}
                 </span>
               </SideRow>
             </div>
@@ -235,10 +279,41 @@ export default function PatrimonioPage() {
                     <text key={p.month} x={chart.xy[i].x} y="246">{monthShort(p.month)}</text>
                   ))}
                 </g>
+                <g fontFamily="Geist Mono" fontSize="11" fill="#C9C5BC">
+                  <rect x="60" y="14" width="14" height="2" fill="#5EE9B5" />
+                  <text x="80" y="19">Patrimonio neto</text>
+                </g>
               </svg>
             ) : (
               <p className="py-10 text-center font-mono text-[12px] text-[color:var(--text-3)]">Sin historial en {currency}.</p>
             )}
+            {evoFoot ? (
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: "repeat(4,1fr)", marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--line-2)" }}
+              >
+                <div style={{ padding: "0 14px 0 0", borderRight: "1px solid var(--line-2)" }}>
+                  <div className="mono uppercase text-[11px]" style={{ color: "var(--text-3)", letterSpacing: "0.08em" }}>Hace 12 meses</div>
+                  <div className="num font-light" style={{ fontSize: 18, marginTop: 4, letterSpacing: "-0.02em", color: "var(--text)" }}>${plain(evoFoot.first, currency)}</div>
+                </div>
+                <div style={{ padding: "0 14px", borderRight: "1px solid var(--line-2)" }}>
+                  <div className="mono uppercase text-[11px]" style={{ color: "var(--text-3)", letterSpacing: "0.08em" }}>Snapshot {evoFoot.prevLabel || "anterior"}</div>
+                  <div className="num font-light" style={{ fontSize: 18, marginTop: 4, letterSpacing: "-0.02em", color: "var(--text)" }}>{evoFoot.prev !== null ? `$${plain(evoFoot.prev, currency)}` : "—"}</div>
+                </div>
+                <div style={{ padding: "0 14px", borderRight: "1px solid var(--line-2)" }}>
+                  <div className="mono uppercase text-[11px]" style={{ color: "var(--text-3)", letterSpacing: "0.08em" }}>Mejor mes (+$)</div>
+                  <div className="num font-light" style={{ fontSize: 18, marginTop: 4, letterSpacing: "-0.02em", color: "var(--text)" }}>
+                    {bestMonth ? <span style={{ color: "var(--acc)" }}>{signed(bestMonth.delta, currency)} {bestMonth.label}</span> : "—"}
+                  </div>
+                </div>
+                <div style={{ padding: "0 0 0 14px", textAlign: "right" }}>
+                  <div className="mono uppercase text-[11px]" style={{ color: "var(--text-3)", letterSpacing: "0.08em" }}>
+                    Hoy{yearPct !== null ? ` · ${yearPct >= 0 ? "+" : ""}${yearPct.toFixed(1)}%` : ""}
+                  </div>
+                  <div className="num font-light" style={{ fontSize: 18, marginTop: 4, letterSpacing: "-0.02em" }}><span style={{ color: "var(--acc)" }}>${plain(total, currency)}</span></div>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           {/* Composition + Snapshots */}
