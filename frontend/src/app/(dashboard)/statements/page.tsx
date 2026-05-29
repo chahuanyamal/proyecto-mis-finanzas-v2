@@ -8,12 +8,21 @@ import { useAuthStore } from "@/stores/auth";
 import { Loader2, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 function monthLabel(s: StatementUpload): string {
   const ref = s.period_end ?? s.period_start;
   if (!ref) return "Sin período";
   return new Date(`${ref}T00:00:00`).toLocaleDateString("es-CL", { month: "long", year: "numeric" });
+}
+
+type CoverageState = "ok" | "partial" | "missing" | "future";
+
+const MONTH_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+function monthKey(iso: string): string {
+  // iso like "2026-05-12" -> "2026-05"
+  return iso.slice(0, 7);
 }
 
 export default function StatementsPage() {
@@ -88,6 +97,50 @@ export default function StatementsPage() {
     for (const s of statements) { const k = monthLabel(s); if (!map.has(k)) map.set(k, []); map.get(k)!.push(s); }
     return [...map.entries()];
   }, [statements]);
+
+  // Coverage matrix: cuentas x últimos 12 meses
+  const coverageMonths = useMemo(() => {
+    const now = new Date();
+    const months: { key: string; label: string }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: MONTH_ABBR[d.getMonth()] });
+    }
+    return months;
+  }, []);
+
+  const coverageMatrix = useMemo(() => {
+    const currentKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+    const isSuccess = (status: string): boolean => {
+      const s = status.toLowerCase();
+      return s === "processed" || (s.includes("process") && s.includes("ed")) || s === "imported" || s === "done";
+    };
+    return accounts.map((acc) => {
+      const accStatements = statements.filter((s) => s.account_id === acc.id);
+      const cells = coverageMonths.map((m) => {
+        let state: CoverageState = m.key > currentKey ? "future" : "missing";
+        let hasSuccess = false;
+        let hasAny = false;
+        for (const s of accStatements) {
+          const start = s.period_start ? monthKey(s.period_start) : null;
+          const end = s.period_end ? monthKey(s.period_end) : start;
+          const ref = start ?? end;
+          if (!ref) continue;
+          const lo = start ?? end!;
+          const hi = end ?? start!;
+          const covers = m.key >= lo && m.key <= hi;
+          if (covers) {
+            hasAny = true;
+            if (isSuccess(s.status)) hasSuccess = true;
+          }
+        }
+        if (hasSuccess) state = "ok";
+        else if (hasAny) state = "partial";
+        return { month: m, state };
+      });
+      return { account: acc, cells };
+    });
+  }, [accounts, statements, coverageMonths]);
 
   const statusChip = (status: string): string => {
     const s = status.toLowerCase();
@@ -176,6 +229,84 @@ export default function StatementsPage() {
             ))}
           </div>
         </section>
+      ) : null}
+
+      {/* Coverage matrix */}
+      {accounts.length > 0 ? (
+        <div className="panel" style={{ marginBottom: 24 }}>
+          <div className="panel-head">
+            <h3>Cobertura</h3>
+            <span className="meta">12 meses</span>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "140px repeat(12, 1fr)", gap: 4, minWidth: 560 }}>
+              {/* header row */}
+              <div />
+              {coverageMonths.map((m) => (
+                <div
+                  key={m.key}
+                  className="mono"
+                  title={m.key}
+                  style={{ fontSize: 10, textAlign: "center", color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", paddingBottom: 4 }}
+                >
+                  {m.label}
+                </div>
+              ))}
+              {/* account rows */}
+              {coverageMatrix.map((row) => (
+                <React.Fragment key={row.account.id}>
+                  <div
+                    title={row.account.name}
+                    style={{ fontSize: 11, color: "var(--text-2)", display: "flex", alignItems: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 8 }}
+                  >
+                    {row.account.name}
+                  </div>
+                  {row.cells.map((cell) => {
+                    const bg =
+                      cell.state === "ok"
+                        ? "rgba(94,233,181,0.18)"
+                        : cell.state === "partial"
+                          ? "rgba(230,184,92,0.18)"
+                          : cell.state === "missing"
+                            ? "rgba(232,122,91,0.12)"
+                            : "var(--bg-3)";
+                    const stateLabel =
+                      cell.state === "ok" ? "cubierto" : cell.state === "partial" ? "parcial" : cell.state === "future" ? "futuro" : "sin cartola";
+                    return (
+                      <div
+                        key={cell.month.key}
+                        title={`${row.account.name} · ${cell.month.key} · ${stateLabel}`}
+                        style={{
+                          height: 24,
+                          borderRadius: 4,
+                          background: bg,
+                          border: "1px solid var(--line)",
+                          transition: "transform 0.12s ease",
+                          cursor: "default",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.06)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+                      />
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          {/* legend */}
+          <div style={{ display: "flex", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
+            {([
+              ["ok", "rgba(94,233,181,0.18)", "Cubierto"],
+              ["partial", "rgba(230,184,92,0.18)", "Parcial"],
+              ["missing", "rgba(232,122,91,0.12)", "Sin cartola"],
+            ] as const).map(([k, c, l]) => (
+              <span key={k} className="mono" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--text-3)" }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: c, border: "1px solid var(--line)" }} />
+                {l}
+              </span>
+            ))}
+          </div>
+        </div>
       ) : null}
 
       {/* Calidad por parser */}

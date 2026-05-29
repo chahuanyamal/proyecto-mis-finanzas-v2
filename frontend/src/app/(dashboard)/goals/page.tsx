@@ -3,6 +3,7 @@
 import { goalsApi } from "@/lib/api";
 import type { Goal, GoalContribution, GoalDepositPayload, GoalPayload } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
+import { addMonths } from "date-fns";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -14,9 +15,29 @@ const MARK_TONES = ["green", "gold", "violet", "blue"] as const;
 function asNumber(value: string | null | undefined): number { return Number(value ?? 0); }
 function fmt(value: number): string { return new Intl.NumberFormat("es-CL").format(Math.round(value)); }
 function shortDate(iso: string): string {
-  const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
-  if (Number.isNaN(d.getTime())) return iso;
+  const d = parseDate(iso);
+  if (!d) return iso;
   return d.toLocaleDateString("es-CL", { day: "2-digit", month: "short" }).toUpperCase().replace(".", "");
+}
+function parseDate(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
+  const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function monthKey(d: Date): string { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+
+// Aporte mensual promedio a partir del historial (últimos meses con aporte).
+function monthlyRate(list: GoalContribution[]): number | null {
+  const dated = list
+    .map((c) => ({ amount: asNumber(c.amount), date: parseDate(c.date) }))
+    .filter((c): c is { amount: number; date: Date } => c.date !== null && c.amount > 0);
+  if (dated.length === 0) return null;
+  const byMonth = new Map<string, number>();
+  for (const c of dated) byMonth.set(monthKey(c.date), (byMonth.get(monthKey(c.date)) ?? 0) + c.amount);
+  const months = [...byMonth.keys()].sort().reverse().slice(0, 6); // últimos ~6 meses con aporte
+  if (months.length === 0) return null;
+  const total = months.reduce((s, m) => s + (byMonth.get(m) ?? 0), 0);
+  return total / months.length;
 }
 
 export default function GoalsPage() {
@@ -143,6 +164,36 @@ export default function GoalsPage() {
     const target = asNumber(goal.target_amount);
     const current = asNumber(goal.current_amount);
     const remaining = target - current;
+
+    // ── Tasa (aporte mensual promedio) y ETA proyectada ──
+    const goalContribs = contributions[goal.id] ?? [];
+    const rate = monthlyRate(goalContribs);
+    const targetDate = parseDate(goal.target_date);
+    let etaDate: Date | null = null;
+    if (remaining > 0 && rate && rate > 0) {
+      const monthsLeft = Math.ceil(remaining / rate);
+      etaDate = addMonths(new Date(), monthsLeft);
+    }
+    // Adelanto (mint) si la ETA llega antes/igual que la fecha objetivo; atraso (rust) si después.
+    const etaColor = etaDate && targetDate
+      ? (etaDate.getTime() <= targetDate.getTime() ? "var(--acc)" : "var(--rust)")
+      : "var(--text-2)";
+    const etaLabel = remaining <= 0 ? "✓ logrado" : etaDate ? shortDate(etaDate.toISOString().slice(0, 10)) : "—";
+    const rateLabel = rate && rate > 0 ? `$${fmt(rate)}/mes` : "—";
+
+    // Historial de aportes inline (mini bar chart) por mes — solo featured.
+    const sparkMonths: { key: string; total: number }[] = (() => {
+      if (!featured) return [];
+      const byMonth = new Map<string, number>();
+      for (const c of goalContribs) {
+        const d = parseDate(c.date);
+        if (!d) continue;
+        byMonth.set(monthKey(d), (byMonth.get(monthKey(d)) ?? 0) + asNumber(c.amount));
+      }
+      return [...byMonth.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).slice(-8).map(([key, total]) => ({ key, total }));
+    })();
+    const sparkMax = sparkMonths.reduce((m, s) => Math.max(m, s.total), 0);
+
     return (
       <div
         key={goal.id}
@@ -199,6 +250,25 @@ export default function GoalsPage() {
               <span className="mono" style={{ position: "absolute", top: -16, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: "var(--text-3)", whiteSpace: "nowrap" }}>MITAD</span>
             </div>
           </div>
+          {featured && sparkMonths.length > 0 ? (
+            <div style={{ marginTop: 18 }}>
+              <span className="label" style={{ display: "block", marginBottom: 8 }}>Historial de aportes</span>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 48 }}>
+                {sparkMonths.map((s) => (
+                  <div key={s.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }} title={`${s.key}: $${fmt(s.total)}`}>
+                    <div
+                      style={{
+                        width: "100%", borderRadius: "3px 3px 0 0",
+                        height: `${sparkMax > 0 ? Math.max(4, (s.total / sparkMax) * 36) : 4}px`,
+                        background: "var(--acc)", opacity: 0.85,
+                      }}
+                    />
+                    <span className="mono" style={{ fontSize: 8, color: "var(--text-3)" }}>{s.key.slice(5)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, padding: "14px 26px", borderTop: "1px solid var(--line-2)", background: "rgba(0,0,0,0.15)" }}>
@@ -207,12 +277,12 @@ export default function GoalsPage() {
             <span className="num" style={{ fontSize: 13, fontWeight: 500 }}>{remaining > 0 ? `$${fmt(remaining)}` : "✓ logrado"}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <span className="label">Objetivo</span>
-            <span className="num" style={{ fontSize: 13, fontWeight: 500 }}>{goal.target_date ? shortDate(goal.target_date) : "abierto"}</span>
+            <span className="label">ETA</span>
+            <span className="num" style={{ fontSize: 13, fontWeight: 500, color: etaColor }}>{etaLabel}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <span className="label">Tasa</span>
-            <span className="num" style={{ fontSize: 13, fontWeight: 500, color: "var(--acc)" }}>{goal.percent}%</span>
+            <span className="num" style={{ fontSize: 13, fontWeight: 500, color: "var(--acc)" }}>{rateLabel}</span>
           </div>
         </div>
 
