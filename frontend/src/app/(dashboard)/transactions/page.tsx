@@ -176,192 +176,289 @@ export default function TransactionsPage() {
   }, [transactions]);
 
   const selectedTotal = transactions.filter((t) => selected.has(t.id)).reduce((a, t) => a + (t.movement_type === "income" ? Number(t.amount) : -Number(t.amount)), 0);
+  const flowTabs: { key: Flow; label: string }[] = [
+    { key: "all", label: "todos" },
+    { key: "income", label: "ingresos" },
+    { key: "expense", label: "gastos" },
+  ];
 
   return (
-    <main className="min-h-screen bg-surface-950 p-8 text-slate-100">
-      <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1fr_380px]">
-        <section className="rounded-lg border border-slate-800 bg-surface-900 p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-brand-400">Libro mayor</p>
-              <h1 className="mt-2 text-3xl font-bold">Movimientos</h1>
+    <div className="content">
+      <div className="title-row">
+        <div>
+          <h1>Libro <span className="serif">mayor</span></h1>
+          <div className="sub">
+            {summary?.total_count ?? transactions.length} movimientos
+            {" · saldo neto "}
+            <strong style={{ color: net >= 0 ? "var(--acc)" : "var(--rust)" }}>{net >= 0 ? "+" : ""}{fmt(net, primaryCurrency)}</strong>
+          </div>
+        </div>
+        <div className="actions">
+          <select className="filt" style={{ appearance: "auto" }} onChange={(e) => { const p = PRESETS.find((x) => x.key === e.target.value); if (p) { const r = p.range(); setFilters((f) => ({ ...f, start_date: r.start, end_date: r.end })); } }} defaultValue="">
+            <option value="" disabled>Período…</option>
+            {PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </select>
+          <button onClick={() => void autoCategorize()} disabled={busy} className="btn ghost">{busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Auto</button>
+          <button onClick={() => exportFile("csv")} className="btn ghost"><Download size={14} /> CSV</button>
+          <button onClick={() => exportFile("excel")} className="btn ghost"><Download size={14} /> Excel</button>
+          <button onClick={() => { reset(); }} className="btn primary">+ Movimiento</button>
+        </div>
+      </div>
+
+      {error ? <div className="insight err" style={{ marginBottom: 16 }}><div className="insight-mark">!</div><div className="insight-body"><div className="txt">{error}</div></div><div /></div> : null}
+      {info ? <div className="insight ok" style={{ marginBottom: 16 }}><div className="insight-mark">✓</div><div className="insight-body"><div className="txt">{info}</div></div><div /></div> : null}
+
+      {/* KPI strip */}
+      <div className="strip">
+        <div className="kpi">
+          <div className="lbl"><span className="sw" />Ingresos</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span>{fmt(income, primaryCurrency).replace(/[^\d.,-]/g, "")}</div>
+          <div className="sub">período seleccionado</div>
+        </div>
+        <div className="kpi r">
+          <div className="lbl"><span className="sw" />Egresos</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span>{fmt(expense, primaryCurrency).replace(/[^\d.,-]/g, "")}</div>
+          <div className="sub">{summary?.uncategorized_count ?? 0} sin categoría</div>
+        </div>
+        <div className="kpi on">
+          <div className="lbl"><span className="sw" />Saldo neto</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span><span className={net >= 0 ? "pos" : "neg"}>{net >= 0 ? "+" : "−"}{fmt(Math.abs(net), primaryCurrency).replace(/[^\d.,-]/g, "")}</span></div>
+          <div className="sub">{income > 0 ? `${Math.round((net / income) * 100)}% del ingreso` : "—"}</div>
+        </div>
+        <div className="kpi g">
+          <div className="lbl"><span className="sw" />Promedio diario</div>
+          <div className="val"><span className="cu">{primaryCurrency}</span>{fmt(expense / dayCount, primaryCurrency).replace(/[^\d.,-]/g, "")}</div>
+          <div className="sub">{dayCount} días observados</div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="filters">
+        <div className="filt-search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+          <input placeholder="Buscar descripción, monto, referencia…" value={filters.search} onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))} />
+        </div>
+        {filters.start_date || filters.end_date ? (
+          <span className="filt on" onClick={() => setFilters((f) => ({ ...f, start_date: "", end_date: "" }))}>
+            {filters.start_date || "inicio"} → {filters.end_date || "hoy"}<span className="x">×</span>
+          </span>
+        ) : null}
+        <select className="filt" style={{ appearance: "auto" }} value={filters.account_id} onChange={(e) => setFilters((f) => ({ ...f, account_id: e.target.value }))}>
+          <option value="">cuenta · todas</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+        <select className="filt" style={{ appearance: "auto" }} value={filters.category_id} onChange={(e) => setFilters((f) => ({ ...f, category_id: e.target.value }))}>
+          <option value="">categoría · todas</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <input type="date" className="filt" style={{ appearance: "auto" }} value={filters.start_date} onChange={(e) => setFilters((f) => ({ ...f, start_date: e.target.value }))} />
+        <input type="date" className="filt" style={{ appearance: "auto" }} value={filters.end_date} onChange={(e) => setFilters((f) => ({ ...f, end_date: e.target.value }))} />
+        <div className="seg" style={{ marginLeft: "auto" }}>
+          {flowTabs.map((fl) => (
+            <button key={fl.key} className={filters.flow === fl.key ? "on" : ""} onClick={() => setFilters((f) => ({ ...f, flow: fl.key }))}>{fl.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 ? (
+        <div className="panel" style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 14px", marginBottom: 10, background: "rgba(94,233,181,0.06)", borderColor: "rgba(94,233,181,0.18)" }}>
+          <strong className="mono" style={{ color: "var(--text)" }}>{selected.size} seleccionados</strong>
+          <span className="mono" style={{ color: "var(--text-3)" }}>· neto {fmt(selectedTotal, primaryCurrency)}</span>
+          <div style={{ flex: 1 }} />
+          <select className="filt" style={{ appearance: "auto" }} value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
+            <option value="">Sin categoría</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <button onClick={() => void bulkApplyCategory()} className="btn primary">Categorizar</button>
+          <ConfirmButton title="Eliminar movimientos" description={`Se eliminarán ${selected.size} movimiento(s) seleccionados.`} confirmLabel="Eliminar" onConfirm={bulkRemove} className="btn danger">Eliminar</ConfirmButton>
+          <button onClick={() => setSelected(new Set())} className="btn ghost">Limpiar</button>
+        </div>
+      ) : null}
+
+      {isLoading ? (
+        <p className="mono" style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--text-3)", padding: "32px 0" }}><Loader2 className="animate-spin" size={16} /> Cargando…</p>
+      ) : (
+        <>
+          <div className="tbl">
+            <div className="tbl-head" style={{ display: "grid", gridTemplateColumns: "30px 88px 1fr 200px 170px 130px 60px", gap: 14 }}>
+              <div />
+              <div>Fecha ↓</div>
+              <div>Descripción</div>
+              <div>Categoría</div>
+              <div>Cuenta</div>
+              <div className="r">Monto</div>
+              <div />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <select className="rounded border border-slate-700 bg-black px-2 py-2 text-sm" onChange={(e) => { const p = PRESETS.find((x) => x.key === e.target.value); if (p) { const r = p.range(); setFilters((f) => ({ ...f, start_date: r.start, end_date: r.end })); } }} defaultValue="">
-                <option value="" disabled>Período…</option>
-                {PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+
+            {grouped.map(([date, rows]) => {
+              const dayNet = rows.reduce((a, t) => a + (t.movement_type === "income" ? Number(t.amount) : -Number(t.amount)), 0);
+              return (
+                <div key={date}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px 8px", background: "var(--bg)" }}>
+                    <span className="mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-3)" }}>{dayLabel(date)}</span>
+                    <span style={{ flex: 1, height: 1, background: "var(--line-2)" }} />
+                    <span className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>
+                      {rows.length} mov · <span style={{ color: dayNet >= 0 ? "var(--acc)" : "var(--rust)" }}>{dayNet >= 0 ? "+" : "−"}{fmt(Math.abs(dayNet), primaryCurrency)}</span>
+                    </span>
+                  </div>
+                  {rows.map((tx) => {
+                    const isSel = selected.has(tx.id);
+                    const isFlag = tx.is_flagged || tx.is_duplicate;
+                    const uncategorized = !tx.category;
+                    return (
+                      <div
+                        key={tx.id}
+                        className="tbl-row"
+                        onClick={() => edit(tx)}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "30px 88px 1fr 200px 170px 130px 60px",
+                          gap: 14,
+                          background: isSel ? "rgba(94,233,181,0.05)" : isFlag ? "rgba(230,184,92,0.04)" : undefined,
+                        }}
+                      >
+                        <div onClick={(e) => { e.stopPropagation(); toggleSel(tx.id); }} style={{ display: "grid", placeItems: "center" }}>
+                          <span style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${isSel ? "var(--acc)" : "var(--text-3)"}`, background: isSel ? "var(--acc)" : "transparent", color: "var(--bg)", display: "grid", placeItems: "center", fontSize: 10 }}>{isSel ? "✓" : ""}</span>
+                        </div>
+                        <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
+                          <strong style={{ display: "block", color: "var(--text-2)", fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase" }}>{new Date(`${tx.date}T00:00:00`).toLocaleDateString("es-CL", { day: "numeric", month: "short" })}</strong>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 8 }}>
+                            {tx.description}
+                            {tx.is_internal_transfer ? <span className="mono" style={{ fontSize: 10, color: "var(--blue)", background: "rgba(122,176,255,0.1)", padding: "1px 6px", borderRadius: 99 }}>interna</span> : null}
+                            {tx.is_duplicate ? <span className="mono" style={{ fontSize: 10, color: "var(--gold)", background: "rgba(230,184,92,0.1)", padding: "1px 6px", borderRadius: 99 }}>duplicado</span> : null}
+                            {tx.is_flagged ? <Flag size={11} style={{ color: "var(--gold)" }} /> : null}
+                            {tx.splits.length ? <span className="mono" style={{ fontSize: 10, color: "var(--violet)", background: "rgba(180,156,255,0.1)", padding: "1px 6px", borderRadius: 99 }}>split</span> : null}
+                          </div>
+                          <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                            {tx.tags.length ? tx.tags.map((t) => t.name).join(" · ").toUpperCase() : (tx.notes ? tx.notes.toUpperCase() : "—")}
+                          </div>
+                        </div>
+                        <div>
+                          <span className={`chip${uncategorized ? " empty" : ""}`}><span className="sw" />{tx.category?.name ?? "Sin categoría"}</span>
+                        </div>
+                        <div className="mono" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "var(--text-2)" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 2, background: tx.account?.account_type === "credit" ? "var(--rust)" : "var(--acc)" }} />
+                          {tx.account?.name ?? "—"}
+                        </div>
+                        <div className="mono r" style={{ fontSize: 14, fontWeight: 500, color: tx.movement_type === "income" ? "var(--acc)" : "var(--text)" }}>
+                          {tx.movement_type === "income" ? "+" : "−"}{fmt(tx.amount, tx.currency).replace(/[^\d.,-]/g, "")}
+                        </div>
+                        <div className="r" onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <ConfirmButton title="Eliminar transacción" description="Esta transacción será eliminada definitivamente." confirmLabel="Eliminar" onConfirm={() => remove(tx.id)} className="btn danger"><Trash2 size={13} /></ConfirmButton>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            {transactions.length === 0 ? (
+              <div className="empty"><div className="empty-mark">∅</div><h4>Sin movimientos</h4><p>No hay movimientos para estos filtros.</p></div>
+            ) : null}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16 }}>
+            <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{summary?.total_count ?? 0} en total · {summary?.uncategorized_count ?? 0} sin categoría</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="btn ghost">Anterior</button>
+              <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>Página {page + 1}</span>
+              <button onClick={() => setPage((p) => p + 1)} disabled={transactions.length < PAGE_SIZE} className="btn ghost">Siguiente</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Formulario crear/editar (drawer-style panel) */}
+      <div className="panel" style={{ marginTop: 24, maxWidth: 760 }}>
+        <div className="panel-head"><h3>{editing ? "Editar movimiento" : "Nuevo movimiento"}</h3>{editing ? <button type="button" onClick={reset} className="btn ghost">Cancelar</button> : null}</div>
+        <form onSubmit={save}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div className="field">
+              <label>Cuenta</label>
+              <select className="input" value={form.account_id} onChange={(e) => setForm((v) => ({ ...v, account_id: e.target.value }))} required>
+                <option value="">Cuenta</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
-              <button onClick={() => void autoCategorize()} disabled={busy} className="flex items-center gap-2 rounded border border-slate-700 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50">{busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Auto</button>
-              <button onClick={() => exportFile("csv")} className="flex items-center gap-2 rounded border border-slate-700 px-3 py-2 text-sm hover:bg-white/5"><Download size={16} /> CSV</button>
-              <button onClick={() => exportFile("excel")} className="flex items-center gap-2 rounded border border-slate-700 px-3 py-2 text-sm hover:bg-white/5"><Download size={16} /> Excel</button>
             </div>
-          </div>
-
-          {error ? <p className="mt-4 rounded bg-red-950/50 px-3 py-2 text-sm text-red-200">{error}</p> : null}
-          {info ? <p className="mt-4 rounded bg-emerald-950/50 px-3 py-2 text-sm text-emerald-200">{info}</p> : null}
-
-          {/* KPI cards */}
-          <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Ingresos</p><p className="mt-1 text-lg font-bold text-emerald-300">{fmt(income, primaryCurrency)}</p></div>
-            <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Egresos</p><p className="mt-1 text-lg font-bold text-red-300">{fmt(expense, primaryCurrency)}</p></div>
-            <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Saldo neto</p><p className={`mt-1 text-lg font-bold ${net >= 0 ? "text-emerald-300" : "text-red-300"}`}>{fmt(net, primaryCurrency)}</p></div>
-            <div className="rounded border border-slate-800 bg-black/30 p-3"><p className="text-[10px] uppercase tracking-widest text-slate-500">Promedio diario</p><p className="mt-1 text-lg font-bold">{fmt(expense / dayCount, primaryCurrency)}</p></div>
-          </div>
-
-          {/* Filtros */}
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <input className="rounded border border-slate-700 bg-black px-3 py-2 text-sm" placeholder="Buscar…" value={filters.search} onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))} />
-            <select className="rounded border border-slate-700 bg-black px-3 py-2 text-sm" value={filters.account_id} onChange={(e) => setFilters((f) => ({ ...f, account_id: e.target.value }))}>
-              <option value="">Todas las cuentas</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-            <select className="rounded border border-slate-700 bg-black px-3 py-2 text-sm" value={filters.category_id} onChange={(e) => setFilters((f) => ({ ...f, category_id: e.target.value }))}>
-              <option value="">Todas las categorías</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <input type="date" className="rounded border border-slate-700 bg-black px-3 py-2 text-sm" value={filters.start_date} onChange={(e) => setFilters((f) => ({ ...f, start_date: e.target.value }))} />
-            <input type="date" className="rounded border border-slate-700 bg-black px-3 py-2 text-sm" value={filters.end_date} onChange={(e) => setFilters((f) => ({ ...f, end_date: e.target.value }))} />
-            <div className="flex gap-1">
-              {(["all", "income", "expense"] as Flow[]).map((fl) => (
-                <button key={fl} onClick={() => setFilters((f) => ({ ...f, flow: fl }))} className={`flex-1 rounded border px-2 py-2 text-xs ${filters.flow === fl ? "border-brand-500 bg-brand-500/10 text-brand-300" : "border-slate-700 hover:bg-white/5"}`}>
-                  {fl === "all" ? "Todos" : fl === "income" ? "Ingresos" : "Gastos"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Barra de selección masiva */}
-          {selected.size > 0 ? (
-            <div className="mt-4 flex flex-wrap items-center gap-3 rounded border border-brand-500/40 bg-brand-500/5 px-4 py-3 text-sm">
-              <span className="font-semibold">{selected.size} seleccionado(s)</span>
-              <span className="text-slate-400">Neto: {fmt(selectedTotal, primaryCurrency)}</span>
-              <select className="rounded border border-slate-700 bg-black px-2 py-1" value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
+            <div className="field">
+              <label>Categoría</label>
+              <select className="input" value={form.category_id ?? ""} onChange={(e) => setForm((v) => ({ ...v, category_id: e.target.value || null }))}>
                 <option value="">Sin categoría</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <button onClick={() => void bulkApplyCategory()} className="rounded bg-brand-500 px-3 py-1 font-semibold text-black">Categorizar</button>
-              <ConfirmButton title="Eliminar movimientos" description={`Se eliminarán ${selected.size} movimiento(s) seleccionados.`} confirmLabel="Eliminar" onConfirm={bulkRemove} className="rounded border border-red-700 px-3 py-1 text-red-300">Eliminar</ConfirmButton>
-              <button onClick={() => setSelected(new Set())} className="text-slate-400">Limpiar</button>
+            </div>
+            <div className="field">
+              <label>Fecha</label>
+              <input type="date" className="input" value={form.date} onChange={(e) => setForm((v) => ({ ...v, date: e.target.value }))} required />
+            </div>
+            <div className="field">
+              <label>Tipo</label>
+              <select className="input" value={form.movement_type} onChange={(e) => setForm((v) => ({ ...v, movement_type: e.target.value as TransactionPayload["movement_type"] }))}>
+                <option value="expense">Gasto</option><option value="income">Ingreso</option>
+              </select>
+            </div>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label>Descripción</label>
+              <input className="input" placeholder="Descripción" value={form.description} onChange={(e) => setForm((v) => ({ ...v, description: e.target.value }))} required />
+            </div>
+            <div className="field">
+              <label>Monto</label>
+              <input type="number" step="0.01" className="input" value={form.amount} onChange={(e) => setForm((v) => ({ ...v, amount: e.target.value }))} required />
+            </div>
+            <div className="field">
+              <label>Moneda</label>
+              <select className="input" value={form.currency} onChange={(e) => setForm((v) => ({ ...v, currency: e.target.value }))}><option value="CLP">CLP</option><option value="USD">USD</option></select>
+            </div>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label>Notas (opcional)</label>
+              <textarea className="input" rows={2} value={form.notes ?? ""} onChange={(e) => setForm((v) => ({ ...v, notes: e.target.value }))} />
+            </div>
+          </div>
+
+          {editing ? (
+            <div className="panel" style={{ background: "var(--bg-3)", padding: 16, marginBottom: 16 }}>
+              <h4 style={{ marginBottom: 10 }}>Detalles</h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }} onClick={() => setExtra((x) => ({ ...x, is_internal_transfer: !x.is_internal_transfer }))}><span className={`toggle${extra.is_internal_transfer ? " on" : ""}`} /> Transferencia interna</label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }} onClick={() => setExtra((x) => ({ ...x, is_duplicate: !x.is_duplicate }))}><span className={`toggle${extra.is_duplicate ? " on" : ""}`} /> Marcar como duplicado</label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }} onClick={() => setExtra((x) => ({ ...x, is_flagged: !x.is_flagged }))}><span className={`toggle${extra.is_flagged ? " on" : ""}`} /> Marcar para revisar</label>
+                {extra.is_flagged ? <input className="input" placeholder="Motivo" value={extra.flag_reason} onChange={(e) => setExtra((x) => ({ ...x, flag_reason: e.target.value }))} /> : null}
+              </div>
+
+              {tags.length ? (
+                <div style={{ marginTop: 14 }}>
+                  <h4 style={{ marginBottom: 8 }}>Etiquetas</h4>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {tags.map((t) => {
+                      const on = tagIds.includes(t.id);
+                      return <button type="button" key={t.id} onClick={() => setTagIds((ids) => on ? ids.filter((x) => x !== t.id) : [...ids, t.id])} className={on ? "chip v" : "chip"} style={on ? { background: "rgba(180,156,255,0.1)", color: "var(--violet)", borderColor: "rgba(180,156,255,0.3)", cursor: "pointer" } : { cursor: "pointer" }}><span className="sw" />{t.name}</button>;
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={{ marginTop: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <h4>Repartir (split)</h4>
+                  <button type="button" onClick={() => setSplits((s) => [...s, { category_id: "", amount: "0", notes: "" }])} className="btn ghost">+ añadir</button>
+                </div>
+                {splits.map((sp, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                    <select className="input" value={sp.category_id ?? ""} onChange={(e) => setSplits((s) => s.map((x, j) => j === i ? { ...x, category_id: e.target.value || null } : x))}>
+                      <option value="">Sin categoría</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <input type="number" step="0.01" className="input" style={{ width: 120 }} value={sp.amount} onChange={(e) => setSplits((s) => s.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} />
+                    <button type="button" onClick={() => setSplits((s) => s.filter((_, j) => j !== i))} className="btn danger"><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
 
-          {isLoading ? (
-            <p className="mt-8 flex gap-2 text-slate-400"><Loader2 className="animate-spin" /> Cargando...</p>
-          ) : (
-            <>
-              <div className="mt-6 space-y-4">
-                {grouped.map(([date, rows]) => {
-                  const dayNet = rows.reduce((a, t) => a + (t.movement_type === "income" ? Number(t.amount) : -Number(t.amount)), 0);
-                  return (
-                    <div key={date}>
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-1 text-xs uppercase tracking-wider text-slate-500">
-                        <span>{dayLabel(date)}</span>
-                        <span>{rows.length} mov · {fmt(dayNet, primaryCurrency)}</span>
-                      </div>
-                      <div className="divide-y divide-slate-800/60">
-                        {rows.map((tx) => (
-                          <div key={tx.id} className={`flex items-center gap-3 py-2 ${editing?.id === tx.id ? "bg-white/5" : "hover:bg-white/5"}`}>
-                            <input type="checkbox" checked={selected.has(tx.id)} onChange={() => toggleSel(tx.id)} className="accent-brand-500" />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium">
-                                {tx.description}
-                                {tx.is_internal_transfer ? <span className="ml-2 rounded bg-sky-900/60 px-1 text-[10px] text-sky-300">INT</span> : null}
-                                {tx.is_duplicate ? <span className="ml-1 rounded bg-amber-900/60 px-1 text-[10px] text-amber-300">DUP</span> : null}
-                                {tx.is_flagged ? <Flag size={12} className="ml-1 inline text-amber-400" /> : null}
-                                {tx.splits.length ? <span className="ml-1 rounded bg-violet-900/60 px-1 text-[10px] text-violet-300">SPLIT</span> : null}
-                              </p>
-                              <p className="truncate text-xs text-slate-500">
-                                {tx.account?.name ?? "-"} · {tx.category?.name ?? "Sin categoría"}
-                                {tx.tags.map((t) => <span key={t.id} className="ml-1 rounded bg-slate-800 px-1 text-[10px] text-slate-300">{t.name}</span>)}
-                              </p>
-                            </div>
-                            <span className={`whitespace-nowrap text-sm font-mono ${tx.movement_type === "income" ? "text-emerald-300" : "text-red-300"}`}>
-                              {tx.movement_type === "income" ? "+" : "−"}{fmt(tx.amount, tx.currency)}
-                            </span>
-                            <button onClick={() => edit(tx)} className="text-xs text-brand-300">Editar</button>
-                            <ConfirmButton title="Eliminar transacción" description="Esta transacción será eliminada definitivamente." confirmLabel="Eliminar" onConfirm={() => remove(tx.id)} className="text-red-300"><Trash2 size={14} /></ConfirmButton>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-                {transactions.length === 0 ? <p className="py-8 text-center text-slate-500">Sin movimientos para estos filtros.</p> : null}
-              </div>
-
-              <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
-                <span>{summary?.total_count ?? 0} en total · {summary?.uncategorized_count ?? 0} sin categoría</span>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="rounded border border-slate-700 px-3 py-1 disabled:opacity-40">Anterior</button>
-                  <span>Página {page + 1}</span>
-                  <button onClick={() => setPage((p) => p + 1)} disabled={transactions.length < PAGE_SIZE} className="rounded border border-slate-700 px-3 py-1 disabled:opacity-40">Siguiente</button>
-                </div>
-              </div>
-            </>
-          )}
-        </section>
-
-        {/* Formulario crear/editar */}
-        <aside className="rounded-lg border border-slate-800 bg-surface-900 p-6">
-          <h2 className="text-lg font-semibold">{editing ? "Editar" : "Nueva"} transacción</h2>
-          <form onSubmit={save} className="mt-5 space-y-4">
-            <select className="w-full rounded border border-slate-700 bg-black px-3 py-2" value={form.account_id} onChange={(e) => setForm((v) => ({ ...v, account_id: e.target.value }))} required>
-              <option value="">Cuenta</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-            <select className="w-full rounded border border-slate-700 bg-black px-3 py-2" value={form.category_id ?? ""} onChange={(e) => setForm((v) => ({ ...v, category_id: e.target.value || null }))}>
-              <option value="">Sin categoría</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <input type="date" className="w-full rounded border border-slate-700 bg-black px-3 py-2" value={form.date} onChange={(e) => setForm((v) => ({ ...v, date: e.target.value }))} required />
-            <input className="w-full rounded border border-slate-700 bg-black px-3 py-2" placeholder="Descripción" value={form.description} onChange={(e) => setForm((v) => ({ ...v, description: e.target.value }))} required />
-            <div className="grid grid-cols-2 gap-3">
-              <input type="number" step="0.01" className="rounded border border-slate-700 bg-black px-3 py-2" value={form.amount} onChange={(e) => setForm((v) => ({ ...v, amount: e.target.value }))} required />
-              <select className="rounded border border-slate-700 bg-black px-3 py-2" value={form.currency} onChange={(e) => setForm((v) => ({ ...v, currency: e.target.value }))}><option value="CLP">CLP</option><option value="USD">USD</option></select>
-            </div>
-            <select className="w-full rounded border border-slate-700 bg-black px-3 py-2" value={form.movement_type} onChange={(e) => setForm((v) => ({ ...v, movement_type: e.target.value as TransactionPayload["movement_type"] }))}>
-              <option value="expense">Gasto</option><option value="income">Ingreso</option>
-            </select>
-            <textarea className="w-full rounded border border-slate-700 bg-black px-3 py-2 text-sm" placeholder="Notas (opcional)" rows={2} value={form.notes ?? ""} onChange={(e) => setForm((v) => ({ ...v, notes: e.target.value }))} />
-
-            {editing ? (
-              <div className="space-y-3 rounded border border-slate-800 bg-black/20 p-3">
-                <p className="text-[10px] uppercase tracking-widest text-slate-500">Detalles</p>
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-brand-500" checked={extra.is_internal_transfer} onChange={(e) => setExtra((x) => ({ ...x, is_internal_transfer: e.target.checked }))} /> Transferencia interna</label>
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-brand-500" checked={extra.is_duplicate} onChange={(e) => setExtra((x) => ({ ...x, is_duplicate: e.target.checked }))} /> Marcar como duplicado</label>
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-brand-500" checked={extra.is_flagged} onChange={(e) => setExtra((x) => ({ ...x, is_flagged: e.target.checked }))} /> Marcar para revisar</label>
-                {extra.is_flagged ? <input className="w-full rounded border border-slate-700 bg-black px-3 py-1.5 text-sm" placeholder="Motivo" value={extra.flag_reason} onChange={(e) => setExtra((x) => ({ ...x, flag_reason: e.target.value }))} /> : null}
-
-                {tags.length ? (
-                  <div>
-                    <p className="mb-1 text-xs text-slate-500">Etiquetas</p>
-                    <div className="flex flex-wrap gap-1">
-                      {tags.map((t) => {
-                        const on = tagIds.includes(t.id);
-                        return <button type="button" key={t.id} onClick={() => setTagIds((ids) => on ? ids.filter((x) => x !== t.id) : [...ids, t.id])} className={`rounded px-2 py-0.5 text-xs ${on ? "bg-brand-500 text-black" : "border border-slate-700 text-slate-300"}`}>{t.name}</button>;
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
-                    <span>Repartir (split)</span>
-                    <button type="button" onClick={() => setSplits((s) => [...s, { category_id: "", amount: "0", notes: "" }])} className="text-brand-300">+ añadir</button>
-                  </div>
-                  {splits.map((sp, i) => (
-                    <div key={i} className="mb-1 flex gap-1">
-                      <select className="flex-1 rounded border border-slate-700 bg-black px-2 py-1 text-xs" value={sp.category_id ?? ""} onChange={(e) => setSplits((s) => s.map((x, j) => j === i ? { ...x, category_id: e.target.value || null } : x))}>
-                        <option value="">Sin categoría</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                      <input type="number" step="0.01" className="w-24 rounded border border-slate-700 bg-black px-2 py-1 text-xs" value={sp.amount} onChange={(e) => setSplits((s) => s.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} />
-                      <button type="button" onClick={() => setSplits((s) => s.filter((_, j) => j !== i))} className="text-red-300"><Trash2 size={14} /></button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <button className="flex w-full justify-center gap-2 rounded bg-brand-500 px-4 py-2 font-semibold text-black"><Save size={18} /> Guardar</button>
-            {editing ? <button type="button" onClick={reset} className="w-full rounded border border-slate-700 px-4 py-2">Cancelar</button> : null}
-          </form>
-        </aside>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn primary lg"><Save size={16} /> Guardar</button>
+            {editing ? <button type="button" onClick={reset} className="btn ghost lg">Cancelar</button> : null}
+          </div>
+        </form>
       </div>
-    </main>
+    </div>
   );
 }
