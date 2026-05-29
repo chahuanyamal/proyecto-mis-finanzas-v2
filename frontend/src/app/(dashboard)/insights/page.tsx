@@ -71,74 +71,128 @@ export default function InsightsPage() {
   }, [catThis, catPrev]);
 
   return (
-    <main className="min-h-screen bg-surface-950 p-8 text-slate-100">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <header>
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-brand-400">Insights</p>
-          <h1 className="mt-2 text-3xl font-bold">Tendencias y resúmenes</h1>
-        </header>
-        {error ? <p className="rounded bg-red-950/50 px-3 py-2 text-sm text-red-200">{error}</p> : null}
+    <div className="content">
+      <div className="title-row">
+        <div>
+          <h1>
+            Tendencias y res<span className="serif">úmenes</span>
+          </h1>
+          <div className="sub">
+            <strong>insights</strong> · evolución de ingresos, gastos y categorías
+          </div>
+        </div>
+      </div>
 
-        {isLoading ? (
-          <p className="flex gap-2 text-slate-400"><Loader2 className="animate-spin" /> Cargando...</p>
-        ) : (
-          <>
-            <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <div className="rounded-lg border border-slate-800 bg-surface-900 p-4"><p className="text-[10px] uppercase tracking-widest text-slate-500">Gasto este mes</p><p className="mt-1 text-lg font-bold text-red-300">{fmt(tExpense)}</p></div>
-              <div className="rounded-lg border border-slate-800 bg-surface-900 p-4"><p className="text-[10px] uppercase tracking-widest text-slate-500">Ingreso este mes</p><p className="mt-1 text-lg font-bold text-emerald-300">{fmt(tIncome)}</p></div>
-              <div className="rounded-lg border border-slate-800 bg-surface-900 p-4"><p className="text-[10px] uppercase tracking-widest text-slate-500">Gasto medio (12m)</p><p className="mt-1 text-lg font-bold">{fmt(avgExpense)}</p></div>
-              <div className="rounded-lg border border-slate-800 bg-surface-900 p-4"><p className="text-[10px] uppercase tracking-widest text-slate-500">Tasa de ahorro</p><p className={`mt-1 text-lg font-bold ${savingsRate >= 0 ? "text-emerald-300" : "text-red-300"}`}>{savingsRate.toFixed(0)}%</p></div>
-            </section>
+      {error ? (
+        <div className="insight err" style={{ marginBottom: 20 }}>
+          <div className="insight-mark">!</div>
+          <div className="insight-body">
+            <div className="lbl">Error</div>
+            <div className="txt">{error}</div>
+          </div>
+          <div />
+        </div>
+      ) : null}
 
-            <section className="rounded-lg border border-slate-800 bg-surface-900 p-6">
-              <h2 className="text-lg font-semibold">Ingresos vs gastos (12 meses)</h2>
-              <div className="mt-5 flex items-end gap-2" style={{ height: 180 }}>
-                {series.map((m) => (
-                  <div key={m.month} className="flex flex-1 flex-col items-center justify-end gap-1">
-                    <div className="flex w-full items-end justify-center gap-0.5" style={{ height: 150 }}>
-                      <div className="w-1/2 rounded-t bg-emerald-500/70" style={{ height: `${(Number(m.income) / maxBar) * 100}%` }} title={`Ingreso ${fmt(Number(m.income))}`} />
-                      <div className="w-1/2 rounded-t bg-red-500/70" style={{ height: `${(Number(m.expense) / maxBar) * 100}%` }} title={`Gasto ${fmt(Number(m.expense))}`} />
+      {isLoading ? (
+        <div className="panel" style={{ display: "flex", gap: 10, alignItems: "center", color: "var(--text-3)" }}>
+          <Loader2 className="animate-spin" size={16} /> Cargando…
+        </div>
+      ) : (
+        <>
+          <div className={`insight ${savingsRate >= 0 ? "ok" : "err"}`}>
+            <div className="insight-mark">{savingsRate >= 0 ? "✓" : "!"}</div>
+            <div className="insight-body">
+              <div className="lbl">Tasa de ahorro · este mes</div>
+              <div className="txt">
+                Estás ahorrando <strong>{savingsRate.toFixed(0)}%</strong> de tus ingresos. Ingreso{" "}
+                <strong>{fmt(tIncome)}</strong> · gasto <strong>{fmt(tExpense)}</strong>.
+              </div>
+            </div>
+            <div className="num" style={{ fontSize: 28, fontWeight: 300, color: savingsRate >= 0 ? "var(--acc)" : "var(--rust)" }}>
+              {savingsRate.toFixed(0)}%
+            </div>
+          </div>
+
+          <div className="strip">
+            <div className="kpi r">
+              <div className="lbl"><span className="sw" />Gasto este mes</div>
+              <div className="val num">{fmt(tExpense)}</div>
+            </div>
+            <div className="kpi">
+              <div className="lbl"><span className="sw" />Ingreso este mes</div>
+              <div className="val num">{fmt(tIncome)}</div>
+            </div>
+            <div className="kpi v">
+              <div className="lbl"><span className="sw" />Gasto medio · 12m</div>
+              <div className="val num">{fmt(avgExpense)}</div>
+            </div>
+            <div className="kpi g">
+              <div className="lbl"><span className="sw" />Tasa de ahorro</div>
+              <div className="val num">{savingsRate.toFixed(0)}%</div>
+            </div>
+          </div>
+
+          <div className="panel" style={{ marginBottom: 20 }}>
+            <div className="panel-head">
+              <h3>Ingresos vs gastos · 12 meses</h3>
+              <span className="meta">{series.length} meses</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 180 }}>
+              {series.map((m) => (
+                <div key={m.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                  <div style={{ display: "flex", width: "100%", alignItems: "flex-end", justifyContent: "center", gap: 2, height: 150 }}>
+                    <div style={{ width: "45%", borderRadius: "2px 2px 0 0", background: "var(--acc)", height: `${(Number(m.income) / maxBar) * 100}%` }} title={`Ingreso ${fmt(Number(m.income))}`} />
+                    <div style={{ width: "45%", borderRadius: "2px 2px 0 0", background: "var(--rust)", height: `${(Number(m.expense) / maxBar) * 100}%` }} title={`Gasto ${fmt(Number(m.expense))}`} />
+                  </div>
+                  <span className="mono" style={{ fontSize: 9, color: "var(--text-3)" }}>{m.month.slice(5)}</span>
+                </div>
+              ))}
+              {series.length === 0 ? <p className="mono" style={{ fontSize: 13, color: "var(--text-3)" }}>Sin datos todavía.</p> : null}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr 1fr" }}>
+            <div className="panel">
+              <div className="panel-head">
+                <h3>Top categorías · este mes</h3>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {topCategories.map((c) => (
+                  <div key={c.name}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+                      <span>{c.name}</span>
+                      <span className="mono" style={{ color: "var(--text-2)" }}>{fmt(c.value)}</span>
                     </div>
-                    <span className="text-[9px] text-slate-500">{m.month.slice(5)}</span>
+                    <div style={{ height: 4, width: "100%", borderRadius: 2, background: "var(--bg-3)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", background: "var(--acc)", borderRadius: 2, width: `${c.pct}%` }} />
+                    </div>
                   </div>
                 ))}
-                {series.length === 0 ? <p className="text-sm text-slate-500">Sin datos todavía.</p> : null}
+                {topCategories.length === 0 ? <p className="mono" style={{ fontSize: 13, color: "var(--text-3)" }}>Sin gastos este mes.</p> : null}
               </div>
-            </section>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              <section className="rounded-lg border border-slate-800 bg-surface-900 p-6">
-                <h2 className="text-lg font-semibold">Top categorías (este mes)</h2>
-                <div className="mt-4 space-y-2">
-                  {topCategories.map((c) => (
-                    <div key={c.name}>
-                      <div className="flex justify-between text-sm"><span>{c.name}</span><span className="font-mono">{fmt(c.value)}</span></div>
-                      <div className="mt-1 h-2 w-full overflow-hidden rounded bg-slate-800"><div className="h-full bg-brand-500" style={{ width: `${c.pct}%` }} /></div>
-                    </div>
-                  ))}
-                  {topCategories.length === 0 ? <p className="text-sm text-slate-500">Sin gastos este mes.</p> : null}
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-slate-800 bg-surface-900 p-6">
-                <h2 className="text-lg font-semibold">Mayores variaciones vs mes anterior</h2>
-                <div className="mt-4 space-y-2">
-                  {variations.map((v) => (
-                    <div key={v.name} className="flex items-center justify-between rounded border border-slate-800 bg-black/30 px-3 py-2 text-sm">
-                      <span>{v.name}</span>
-                      <span className={`flex items-center gap-1 font-mono ${v.diff > 0 ? "text-red-300" : "text-emerald-300"}`}>
-                        {v.diff > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                        {v.diff > 0 ? "+" : ""}{fmt(v.diff)}
-                      </span>
-                    </div>
-                  ))}
-                  {variations.length === 0 ? <p className="text-sm text-slate-500">Sin variaciones relevantes.</p> : null}
-                </div>
-              </section>
             </div>
-          </>
-        )}
-      </div>
-    </main>
+
+            <div className="panel">
+              <div className="panel-head">
+                <h3>Mayores variaciones vs mes anterior</h3>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {variations.map((v) => (
+                  <div key={v.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid var(--line-2)", background: "var(--bg-3)", borderRadius: 6, padding: "10px 12px", fontSize: 13 }}>
+                    <span>{v.name}</span>
+                    <span className="mono" style={{ display: "flex", alignItems: "center", gap: 6, color: v.diff > 0 ? "var(--rust)" : "var(--acc)" }}>
+                      {v.diff > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                      {v.diff > 0 ? "+" : ""}{fmt(v.diff)}
+                    </span>
+                  </div>
+                ))}
+                {variations.length === 0 ? <p className="mono" style={{ fontSize: 13, color: "var(--text-3)" }}>Sin variaciones relevantes.</p> : null}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

@@ -31,12 +31,102 @@ export default function ReconciliationPage() {
     }
   }, [currency, endDate, startDate, tolerance, user]);
 
+  const cols = "1fr 150px 150px 130px 130px 90px";
+
   return (
-    <section className="p-4 text-slate-100 sm:p-6 lg:p-8"><div className="mx-auto max-w-6xl space-y-5">
-      <header className="card p-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.35em] text-brand-400">Control</p><h1 className="mt-2">Reconciliación</h1><p className="mt-2 text-sm text-slate-400">Usa saldos de cartola cuando existen; si no, compara saldo de cuenta contra neto de movimientos.</p></div><button className="btn-primary" onClick={() => setCurrency((c) => c === "CLP" ? "USD" : "CLP")}>{currency}</button></div><div className="mt-4 grid gap-3 sm:grid-cols-3"><input className="rounded border border-slate-700 bg-black px-3 py-2 text-sm" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /><input className="rounded border border-slate-700 bg-black px-3 py-2 text-sm" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /><input className="rounded border border-slate-700 bg-black px-3 py-2 text-sm" inputMode="decimal" value={tolerance} onChange={(e) => setTolerance(e.target.value)} placeholder="Tolerancia" /></div></header>
-      {error ? <div className="card border-red-500/40 p-4 text-sm text-red-300">{error}</div> : null}
-      <div className="grid gap-3 md:grid-cols-2"><div className="card p-5"><p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">OK</p><p className="mt-3 text-3xl font-bold text-emerald-300">{data?.ok_count ?? 0}</p></div><div className="card p-5"><p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Alertas</p><p className="mt-3 text-3xl font-bold text-red-300">{data?.warning_count ?? 0}</p></div></div>
-       <section className="card overflow-hidden"><table className="w-full text-left text-sm"><thead className="text-xs uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2">Cuenta</th><th className="px-3 py-2 text-right">Saldo cuenta</th><th className="px-3 py-2 text-right">Movimientos</th><th className="px-3 py-2 text-right">Diferencia</th><th className="px-3 py-2">Base</th><th className="px-3 py-2">Estado</th></tr></thead><tbody className="divide-y divide-slate-800">{(data?.accounts ?? []).map((a) => <tr key={a.account_id}><td className="px-3 py-2">{a.account_name}<p className="text-xs text-slate-500">{a.transaction_count} mov.</p></td><td className="px-3 py-2 text-right">{money(a.account_balance, a.currency)}</td><td className="px-3 py-2 text-right">{money(a.movement_balance, a.currency)}</td><td className={`px-3 py-2 text-right ${a.status === "ok" ? "text-emerald-300" : "text-red-300"}`}>{money(a.difference, a.currency)}</td><td className="px-3 py-2 text-xs text-slate-400">{a.reconciliation_basis === "statement" ? `${a.statement_count} cartola(s)` : "saldo cuenta"}</td><td className="px-3 py-2">{a.status}</td></tr>)}{data?.accounts.length === 0 ? <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">Sin cuentas en {currency}.</td></tr> : null}</tbody></table></section>
-    </div></section>
+    <div className="content">
+      <div className="title-row">
+        <div>
+          <h1>
+            Reconciliaci<span className="serif">ón</span>
+          </h1>
+          <div className="sub">
+            <strong>control</strong> · cartola vs. saldo calculado — usa saldos de cartola cuando existen
+          </div>
+        </div>
+        <div className="actions">
+          <div className="seg">
+            <button className={currency === "CLP" ? "on" : ""} onClick={() => setCurrency("CLP")}>CLP</button>
+            <button className={currency === "USD" ? "on" : ""} onClick={() => setCurrency("USD")}>USD</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="filters">
+        <div className="field" style={{ margin: 0, minWidth: 160 }}>
+          <label>Desde</label>
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        </div>
+        <div className="field" style={{ margin: 0, minWidth: 160 }}>
+          <label>Hasta</label>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </div>
+        <div className="field" style={{ margin: 0, minWidth: 140 }}>
+          <label>Tolerancia</label>
+          <input inputMode="decimal" value={tolerance} onChange={(e) => setTolerance(e.target.value)} placeholder="Tolerancia" />
+        </div>
+      </div>
+
+      {error ? (
+        <div className="insight err" style={{ marginBottom: 20 }}>
+          <div className="insight-mark">!</div>
+          <div className="insight-body">
+            <div className="lbl">Error</div>
+            <div className="txt">{error}</div>
+          </div>
+          <div />
+        </div>
+      ) : null}
+
+      <div className="strip" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+        <div className="kpi">
+          <div className="lbl"><span className="sw" />Conciliadas</div>
+          <div className="val num">{data?.ok_count ?? 0}</div>
+          <div className="sub">sin diferencia relevante</div>
+        </div>
+        <div className="kpi g">
+          <div className="lbl"><span className="sw" />Con alertas</div>
+          <div className="val num">{data?.warning_count ?? 0}</div>
+          <div className="sub">requieren revisión</div>
+        </div>
+      </div>
+
+      <div className="tbl">
+        <div className="tbl-head" style={{ display: "grid", gridTemplateColumns: cols, gap: 14 }}>
+          <div>Cuenta</div>
+          <div className="r">Saldo cuenta</div>
+          <div className="r">Movimientos</div>
+          <div className="r">Diferencia</div>
+          <div>Base</div>
+          <div className="r">Estado</div>
+        </div>
+        {(data?.accounts ?? []).map((a) => (
+          <div key={a.account_id} className="tbl-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 14 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{a.account_name}</div>
+              <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{a.transaction_count} mov.</div>
+            </div>
+            <div className="r mono" style={{ fontSize: 12 }}>{money(a.account_balance, a.currency)}</div>
+            <div className="r mono" style={{ fontSize: 12 }}>{money(a.movement_balance, a.currency)}</div>
+            <div className="r mono" style={{ fontSize: 12, color: a.status === "ok" ? "var(--acc)" : "var(--gold)" }}>{money(a.difference, a.currency)}</div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>
+              {a.reconciliation_basis === "statement" ? `${a.statement_count} cartola(s)` : "saldo cuenta"}
+            </div>
+            <div className="r">
+              <span className={`chip ${a.status === "ok" ? "ok" : "warn"}`}>
+                <span className="sw" />{a.status === "ok" ? "OK" : "REVISAR"}
+              </span>
+            </div>
+          </div>
+        ))}
+        {data?.accounts.length === 0 ? (
+          <div className="empty">
+            <div className="empty-mark">∅</div>
+            <h4>Sin cuentas en {currency}</h4>
+            <p>No hay cuentas con movimientos en esta moneda para el rango seleccionado.</p>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
