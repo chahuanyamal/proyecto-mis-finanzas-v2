@@ -62,7 +62,7 @@ def _parse_xml(text: str) -> OfxParseResult:
 
     def find(root_elem: ET.Element, tag: str) -> str | None:
         for elem in root_elem.iter():
-            if elem.tag.endswith(f"} {tag}".strip()) or elem.tag == tag:
+            if elem.tag.endswith(f"}}{tag}") or elem.tag == tag:
                 return elem.text and elem.text.strip() or None
         return None
 
@@ -245,7 +245,7 @@ def _parse_sgml_transaction(block: str) -> OfxTransactionDict | None:
 def _parse_ofx_transaction(elem: ET.Element) -> OfxTransactionDict | None:
     def child_text(tag: str) -> str | None:
         for e in elem.iter():
-            if e.tag.endswith(f"} {tag}".strip()) or e.tag == tag:
+            if e.tag.endswith(f"}}{tag}") or e.tag == tag:
                 return e.text and e.text.strip() or None
         return None
 

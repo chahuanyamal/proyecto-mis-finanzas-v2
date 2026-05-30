@@ -67,3 +67,17 @@ class RulePreviewResult(BaseModel):
 class RuleApplyResult(BaseModel):
     matched: int
     updated: int
+
+
+class RuleSuggestion(BaseModel):
+    field: str
+    operator: str
+    pattern: str
+    target_category_id: uuid.UUID
+    target_category_name: str
+    match_count: int
+    sample: str
+
+    @field_serializer("target_category_id")
+    def _ser_cat(self, v: uuid.UUID) -> str:
+        return str(v)

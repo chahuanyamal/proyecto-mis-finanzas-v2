@@ -7,11 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from collections import defaultdict
+
 from app.core.database import get_db
 from app.models.account import Account
+from app.models.category import Category
 from app.models.category_rule import CategoryRule
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.modules.transactions.normalize import normalize_merchant
 from app.modules.auth.deps import get_current_user
 from app.modules.audit.service import log_audit
 from app.modules.categories.service import ensure_category_visible
@@ -23,6 +27,7 @@ from app.modules.rules.schemas import (
     RulePreviewRequest,
     RulePreviewResult,
     RulePreviewSample,
+    RuleSuggestion,
 )
 
 router = APIRouter(prefix="/api/v1/category-rules", tags=["category-rules"])
@@ -140,6 +145,67 @@ async def apply_rule(
         )
         await db.commit()
     return RuleApplyResult(matched=len(matches), updated=updated)
+
+
+@router.get("/suggestions", response_model=list[RuleSuggestion])
+async def suggest_rules(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[RuleSuggestion]:
+    """Propone reglas analizando movimientos categorizados manualmente (sin regla)."""
+    result = await db.execute(
+        select(Transaction)
+        .join(Account)
+        .where(
+            Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
+            Transaction.category_id.is_not(None),
+            Transaction.rule_id.is_(None),
+        )
+    )
+    txs = list(result.scalars().all())
+
+    # Patrones existentes para no proponer duplicados.
+    existing = await db.execute(select(CategoryRule).where(CategoryRule.user_id == current_user.id))
+    existing_patterns = {r.pattern.lower() for r in existing.scalars().all()}
+
+    # Agrupa por (primer token significativo del comercio, categoría).
+    groups: dict[tuple[str, uuid.UUID], list[Transaction]] = defaultdict(list)
+    for tx in txs:
+        name = normalize_merchant(tx.description)
+        token = name.split(" ")[0].lower() if name else ""
+        if len(token) < 3:
+            continue
+        groups[(token, tx.category_id)].append(tx)
+
+    # Resuelve nombres de categoría.
+    cat_ids = {cid for (_, cid) in groups}
+    cat_names: dict[uuid.UUID, str] = {}
+    if cat_ids:
+        cats = await db.execute(select(Category).where(Category.id.in_(cat_ids)))
+        cat_names = {c.id: c.name for c in cats.scalars().all()}
+
+    # Para cada token, la categoría dominante debe ser consistente.
+    token_categories: dict[str, set[uuid.UUID]] = defaultdict(set)
+    for (token, cid) in groups:
+        token_categories[token].add(cid)
+
+    suggestions: list[RuleSuggestion] = []
+    for (token, cid), rows in groups.items():
+        if len(rows) < 3:
+            continue
+        if token in existing_patterns:
+            continue
+        # Solo si ese token se asocia a una única categoría (señal clara).
+        if len(token_categories[token]) != 1:
+            continue
+        suggestions.append(RuleSuggestion(
+            field="description", operator="contains", pattern=token,
+            target_category_id=cid, target_category_name=cat_names.get(cid, "—"),
+            match_count=len(rows), sample=rows[0].description[:80],
+        ))
+    suggestions.sort(key=lambda s: s.match_count, reverse=True)
+    return suggestions[:20]
 
 
 @router.patch("/{rule_id}", response_model=CategoryRuleOut)

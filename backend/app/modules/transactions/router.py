@@ -4,6 +4,7 @@ import csv
 import datetime
 import io
 import uuid
+from collections import defaultdict
 from decimal import Decimal
 from io import BytesIO
 
@@ -30,6 +31,7 @@ from app.modules.accounts.schemas import AccountOut
 from app.modules.categories.schemas import CategoryOut
 from app.modules.categories.service import ensure_category_visible
 from app.modules.tags.schemas import TagOut
+from app.modules.transactions.normalize import normalize_merchant
 from app.modules.transactions.schemas import (
     BulkCategoryIn,
     BulkDeleteIn,
@@ -38,14 +40,19 @@ from app.modules.transactions.schemas import (
     FlagIn,
     NotesIn,
     PaginatedTransactions,
+    AnomalyItem,
+    LinkTransferIn,
+    MergeIn,
     SplitIn,
     SplitOut,
     TagsIn,
     TransactionCreate,
+    TransactionHistoryEvent,
     TransactionOut,
     TransactionSummary,
     TransactionUpdate,
 )
+from app.models.audit import AuditEvent
 
 router = APIRouter(prefix="/api/v1/transactions", tags=["transactions"])
 
@@ -66,6 +73,7 @@ def _to_out(tx: Transaction) -> TransactionOut:
         category_id=tx.category_id,
         date=tx.date,
         description=tx.description,
+        display_name=normalize_merchant(tx.description),
         amount=tx.amount,
         currency=tx.currency,
         movement_type=tx.movement_type,
@@ -603,6 +611,85 @@ async def detect_internal_transfers(
     return {"pairs": pairs, "transactions": pairs * 2}
 
 
+@router.get("/anomalies", response_model=list[AnomalyItem])
+async def list_anomalies(
+    threshold: float = Query(default=2.5, ge=1.0, le=6.0),
+    min_ratio: float = Query(default=3.0, ge=1.5, le=10.0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[AnomalyItem]:
+    """Gastos estadísticamente inusuales respecto al historial de su categoría."""
+    import statistics
+
+    result = await db.execute(
+        select(Transaction)
+        .options(selectinload(Transaction.category))
+        .join(Account)
+        .where(
+            Account.user_id == current_user.id,
+            Transaction.user_id == current_user.id,
+            Transaction.movement_type == "expense",
+            Transaction.category_id.is_not(None),
+            Transaction.is_internal_transfer.is_(False),
+            Transaction.is_duplicate.is_(False),
+        )
+    )
+    txs = list(result.scalars().all())
+    by_cat: dict[uuid.UUID, list[Transaction]] = defaultdict(list)
+    for tx in txs:
+        by_cat[tx.category_id].append(tx)
+
+    anomalies: list[AnomalyItem] = []
+    for rows in by_cat.values():
+        if len(rows) < 4:
+            continue
+        amounts = [abs(float(t.amount or 0)) for t in rows]
+        total = sum(amounts)
+        for tx, amt in zip(rows, amounts):
+            # Leave-one-out: compara contra el promedio/desviación del RESTO de la
+            # categoría, así un outlier no diluye su propia referencia.
+            others = [a for j, a in enumerate(amounts) if rows[j].id != tx.id]
+            mean_o = (total - amt) / (len(amounts) - 1) if len(amounts) > 1 else 0.0
+            std_o = statistics.pstdev(others) if len(others) >= 2 else 0.0
+            if mean_o <= 0:
+                continue
+            ratio = amt / mean_o
+            z = (amt - mean_o) / std_o if std_o > 0 else 0.0
+            if z >= threshold or ratio >= min_ratio:
+                anomalies.append(AnomalyItem(
+                    id=tx.id, date=tx.date, description=tx.description,
+                    display_name=normalize_merchant(tx.description),
+                    amount=tx.amount, currency=tx.currency,
+                    category_id=tx.category_id,
+                    category_name=tx.category.name if tx.category else None,
+                    category_avg=round(mean_o, 2), ratio=round(ratio, 2), z_score=round(z, 2),
+                ))
+    anomalies.sort(key=lambda a: a.ratio, reverse=True)
+    return anomalies[:50]
+
+
+@router.post("/link-transfer")
+async def link_transfer(
+    body: LinkTransferIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, bool]:
+    """Marca explícitamente dos movimientos como la misma transferencia interna."""
+    txs = await _owned_transactions([body.transaction_id_a, body.transaction_id_b], db, current_user)
+    if len(txs) != 2:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ambos movimientos deben existir y ser tuyos")
+    if txs[0].account_id == txs[1].account_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Deben ser de cuentas distintas")
+    for tx in txs:
+        tx.is_internal_transfer = True
+    await log_audit(
+        db, user_id=current_user.id, action="link_transfer", entity_type="transaction",
+        entity_id=str(body.transaction_id_a), metadata={"linked_with": str(body.transaction_id_b)},
+    )
+    await db.commit()
+    return {"linked": True}
+
+
 async def _owned_transactions(
     transaction_ids: list[uuid.UUID], db: AsyncSession, current_user: User
 ) -> list[Transaction]:
@@ -812,6 +899,56 @@ async def clear_splits(
     )
     await db.commit()
     return _to_out(await _transaction_or_404(transaction_id, db, current_user))
+
+
+@router.get("/{transaction_id}/history", response_model=list[TransactionHistoryEvent])
+async def transaction_history(
+    transaction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[TransactionHistoryEvent]:
+    """Historial de auditoría (quién cambió qué y cuándo) de una transacción."""
+    await _transaction_or_404(transaction_id, db, current_user)
+    result = await db.execute(
+        select(AuditEvent)
+        .where(
+            AuditEvent.user_id == current_user.id,
+            AuditEvent.entity_type == "transaction",
+            AuditEvent.entity_id == str(transaction_id),
+        )
+        .order_by(AuditEvent.created_at.desc())
+    )
+    return [
+        TransactionHistoryEvent(id=e.id, action=e.action, metadata=e.metadata_json, created_at=e.created_at)
+        for e in result.scalars().all()
+    ]
+
+
+@router.post("/{transaction_id}/merge", response_model=TransactionOut)
+async def merge_duplicate(
+    transaction_id: uuid.UUID,
+    body: MergeIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TransactionOut:
+    """Fusiona un duplicado en la transacción principal: marca el duplicado y conserva la principal."""
+    if transaction_id == body.duplicate_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No puedes fusionar una transacción consigo misma")
+    primary = await _transaction_or_404(transaction_id, db, current_user)
+    duplicate = await _transaction_or_404(body.duplicate_id, db, current_user)
+    duplicate.is_duplicate = True
+    # Conserva metadatos útiles del duplicado en la principal si faltan.
+    if not primary.notes and duplicate.notes:
+        primary.notes = duplicate.notes
+    if primary.category_id is None and duplicate.category_id is not None:
+        primary.category_id = duplicate.category_id
+    await log_audit(
+        db, user_id=current_user.id, action="merge", entity_type="transaction",
+        entity_id=str(transaction_id), metadata={"merged_duplicate": str(body.duplicate_id)},
+    )
+    await db.commit()
+    refreshed = await _transaction_or_404(transaction_id, db, current_user)
+    return _to_out(refreshed)
 
 
 @router.delete("/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)

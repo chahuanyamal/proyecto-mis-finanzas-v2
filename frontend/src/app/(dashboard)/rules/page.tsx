@@ -8,6 +8,7 @@ import type {
   CategoryRulePayload,
   RuleApplyResult,
   RulePreviewResult,
+  RuleSuggestion,
 } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2 } from "lucide-react";
@@ -65,6 +66,17 @@ export default function RulesPage() {
   const previewSeq = useRef(0);
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [applyResult, setApplyResult] = useState<{ id: string; result: RuleApplyResult } | null>(null);
+  const [suggestions, setSuggestions] = useState<RuleSuggestion[]>([]);
+  const [creatingSuggestion, setCreatingSuggestion] = useState<string | null>(null);
+
+  async function loadSuggestions() {
+    try {
+      const { data } = await rulesApi.suggestions();
+      setSuggestions(data);
+    } catch {
+      setSuggestions([]);
+    }
+  }
 
   async function loadData() {
     setIsLoading(true);
@@ -79,8 +91,34 @@ export default function RulesPage() {
     }
   }
 
+  function suggestionKey(s: RuleSuggestion): string {
+    return `${s.field}|${s.operator}|${s.pattern}|${s.target_category_id}`;
+  }
+
+  async function createFromSuggestion(s: RuleSuggestion) {
+    const key = suggestionKey(s);
+    setCreatingSuggestion(key);
+    try {
+      await rulesApi.create({
+        target_category_id: s.target_category_id,
+        field: s.field,
+        operator: s.operator,
+        pattern: s.pattern,
+        priority: 0,
+      });
+      await Promise.all([loadData(), loadSuggestions()]);
+    } catch {
+      setError("No se pudo crear la regla sugerida.");
+    } finally {
+      setCreatingSuggestion(null);
+    }
+  }
+
   useEffect(() => {
-    if (user) void loadData();
+    if (user) {
+      void loadData();
+      void loadSuggestions();
+    }
   }, [user]);
 
   // Live preview with debounce; ignore stale responses.
@@ -233,6 +271,69 @@ export default function RulesPage() {
           <div className="sub">orden de evaluación</div>
         </div>
       </section>
+
+      {/* Sugerencias de reglas */}
+      {suggestions.length > 0 ? (
+        <div className="panel" style={{ marginBottom: 24 }}>
+          <div className="mb-3 flex items-baseline justify-between">
+            <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-2)]">
+              Sugerencias de reglas
+            </h3>
+            <span className="font-mono text-[11px] text-[color:var(--text-3)]">
+              {suggestions.length} detectadas en tus movimientos
+            </span>
+          </div>
+          <div className="flex flex-col">
+            {suggestions.map((s) => {
+              const key = suggestionKey(s);
+              const cat = categories.find((c) => c.id === s.target_category_id) ?? null;
+              return (
+                <div
+                  key={key}
+                  className="flex flex-wrap items-center gap-3 border-b border-[color:var(--line)] py-3 last:border-0"
+                >
+                  <span
+                    className="mono rounded border px-1.5 py-0.5 text-[12px]"
+                    style={{
+                      color: "var(--acc)",
+                      background: "rgba(94,233,181,0.06)",
+                      borderColor: "rgba(94,233,181,0.18)",
+                    }}
+                  >
+                    {s.pattern}
+                  </span>
+                  <span className="font-mono text-[12px] text-[color:var(--text-3)]">→</span>
+                  <span className="chip g">
+                    <span className="sw" style={{ background: cat?.color ?? undefined }} />
+                    {s.target_category_name}
+                  </span>
+                  <span className="font-mono text-[12px]" style={{ color: "var(--gold)" }}>
+                    {s.match_count} coincidencias
+                  </span>
+                  <span className="mono max-w-[280px] truncate text-[12px] text-[color:var(--text-3)]">
+                    {s.sample}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn primary ml-auto"
+                    style={{ padding: "4px 10px", fontSize: 11 }}
+                    disabled={creatingSuggestion === key}
+                    onClick={() => void createFromSuggestion(s)}
+                  >
+                    {creatingSuggestion === key ? (
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 className="animate-spin" size={12} /> creando…
+                      </span>
+                    ) : (
+                      "Crear regla"
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       {/* Builder sandbox */}
       <div

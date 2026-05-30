@@ -106,6 +106,37 @@ export interface RuleApplyResult {
   updated: number;
 }
 
+export interface RuleSuggestion {
+  field: string;
+  operator: string;
+  pattern: string;
+  target_category_id: string;
+  target_category_name: string;
+  match_count: number;
+  sample: string;
+}
+
+export interface AnomalyItem {
+  id: string;
+  date: string;
+  description: string;
+  display_name: string;
+  amount: string;
+  currency: string;
+  category_id: string | null;
+  category_name: string | null;
+  category_avg: string;
+  ratio: number;
+  z_score: number;
+}
+
+export interface TransactionHistoryEvent {
+  id: string;
+  action: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
 export type SearchEntity = "transaction" | "account" | "category" | "tag" | "rule" | "statement";
 
 export interface SearchHit {
@@ -138,6 +169,7 @@ export interface Transaction {
   category_id: string | null;
   date: string;
   description: string;
+  display_name?: string;
   amount: string;
   currency: string;
   movement_type: "income" | "expense";
