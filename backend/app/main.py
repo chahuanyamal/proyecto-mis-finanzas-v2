@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.database import async_session_factory, engine
 from app.core.logging import get_logger, setup_logging
 from app.modules.accounts.router import router as accounts_router
+from app.modules.attachments.router import router as attachments_router
 from app.modules.audit.router import router as audit_router
 from app.modules.auth.router import router as auth_router
 from app.modules.budgets.router import router as budgets_router
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(auth_router)
+    app.include_router(attachments_router)
     app.include_router(audit_router)
     app.include_router(accounts_router)
     app.include_router(budgets_router)

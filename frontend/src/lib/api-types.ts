@@ -840,3 +840,12 @@ export interface AiAskResponse {
   model: string;
   context_used: string[];
 }
+
+export interface Attachment {
+  id: string;
+  transaction_id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  created_at: string;
+}

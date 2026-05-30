@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { CommandPalette } from "./CommandPalette";
+import { Toaster } from "./Toaster";
 import { ThemeApplier } from "./ThemeApplier";
 import { PWARegister } from "./PWARegister";
 import { BOVEDA_NAV, BOVEDA_NAV_FLAT, isActive, openCommandPalette } from "./nav";
@@ -185,6 +186,7 @@ export function BovedaShell({ children }: { children: ReactNode }) {
       </main>
 
       <CommandPalette />
+      <Toaster />
       <ThemeApplier />
       <PWARegister />
     </div>

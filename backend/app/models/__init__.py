@@ -1,4 +1,5 @@
 from app.models.account import Account
+from app.models.attachment import Attachment
 from app.models.audit import AuditEvent
 from app.models.notification import Notification
 from app.models.budget import Budget
@@ -22,6 +23,7 @@ __all__ = [
     "Institution",
     "Account",
     "AuditEvent",
+    "Attachment",
     "Category",
     "StatementPreview",
     "UploadedFile",

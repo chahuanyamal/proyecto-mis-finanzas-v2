@@ -24,6 +24,7 @@ import type {
   AiConfig,
   AiConfigUpdate,
   AiTestResult,
+  Attachment,
   BudgetSuggestion,
   CashflowForecast,
   MonthlyInsights,
@@ -411,6 +412,19 @@ export const statementsApi = {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
+};
+
+export const attachmentsApi = {
+  list: (transactionId: string) => api.get<Attachment[]>(`/v1/transactions/${transactionId}/attachments`),
+  upload: (transactionId: string, file: File) => {
+    const data = new FormData();
+    data.append("file", file);
+    return api.post<Attachment>(`/v1/transactions/${transactionId}/attachments`, data, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  downloadUrl: (id: string) => `/api/v1/attachments/${id}/download`,
+  remove: (id: string) => api.delete(`/v1/attachments/${id}`),
 };
 
 export default api;

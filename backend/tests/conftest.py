@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 os.environ.setdefault("APP_ENV", "test")
+os.environ.setdefault("UPLOAD_DIR", os.path.join(os.environ.get("TMPDIR", "/tmp"), "boveda_test_uploads"))
 
 import pytest
 import pytest_asyncio

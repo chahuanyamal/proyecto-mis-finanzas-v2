@@ -12,6 +12,7 @@ import type {
   Tag,
 } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
+import { toast } from "@/stores/toast";
 import { Loader2 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -166,9 +167,11 @@ export default function RulesPage() {
     try {
       const { data } = await rulesApi.apply(id);
       setApplyResult({ id, result: data });
+      toast.success(`Regla aplicada: ${data.updated} de ${data.matched} movimiento(s) actualizados.`);
       await loadData();
     } catch {
       setError("No se pudo aplicar la regla a los históricos.");
+      toast.error("No se pudo aplicar la regla a los históricos.");
     } finally {
       setApplyingId(null);
     }
