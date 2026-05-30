@@ -432,3 +432,107 @@ async def cashflow_forecast(
         "daily_net_avg": str(daily_net.quantize(Decimal("1"))),
         "points": points,
     }
+
+
+@router.get("/insights")
+async def monthly_insights(
+    month: str = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    currency: str = Query(default="CLP", max_length=3),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Resumen mensual automático: narrativa basada en reglas (sin LLM)."""
+    target = month or datetime.date.today().strftime("%Y-%m")
+    start, end = _month_range(target)
+    prev_start, prev_end = _month_range(_add_months(start, -1).strftime("%Y-%m"))
+
+    cur = await _totals_for_range(db, current_user, start, end, currency)
+    prev = await _totals_for_range(db, current_user, prev_start, prev_end, currency)
+
+    items: list[dict] = []
+
+    def pct(now: Decimal, before: Decimal) -> float | None:
+        if before == 0:
+            return None
+        return float(round((now - before) / abs(before) * 100, 1))
+
+    # Ahorro neto.
+    net = cur["net"]
+    if net > 0:
+        items.append({"type": "ok", "title": "Mes en azul",
+                      "detail": f"Cerraste con ahorro neto de {_money(net)} {currency}."})
+    elif net < 0:
+        items.append({"type": "err", "title": "Mes en rojo",
+                      "detail": f"Gastaste {_money(-net)} {currency} más de lo que ingresó."})
+
+    # Gastos vs mes anterior.
+    ep = pct(cur["expenses"], prev["expenses"])
+    if ep is not None and abs(ep) >= 5:
+        items.append({
+            "type": "warn" if ep > 0 else "ok",
+            "title": "Gastos al alza" if ep > 0 else "Gastos a la baja",
+            "detail": f"Tus gastos {'subieron' if ep > 0 else 'bajaron'} {abs(ep)}% vs. el mes anterior.",
+        })
+
+    # Tasa de ahorro.
+    if cur["income"] > 0:
+        rate = round(cur["net"] / cur["income"] * 100, 1)
+        items.append({"type": "neutral", "title": "Tasa de ahorro",
+                      "detail": f"Ahorraste el {rate}% de tus ingresos este mes."})
+
+    # Categoría que más creció.
+    async def cat_expenses(s: datetime.date, e: datetime.date) -> dict:
+        rows = await db.execute(
+            select(Transaction.category_id, func.coalesce(func.sum(Transaction.amount), 0))
+            .join(Account)
+            .where(Account.user_id == current_user.id, Transaction.user_id == current_user.id,
+                   Transaction.movement_type == "expense", Transaction.category_id.is_not(None),
+                   Transaction.date >= s, Transaction.date < e,
+                   Transaction.currency == currency,
+                   Transaction.is_internal_transfer.is_(False), Transaction.is_duplicate.is_(False))
+            .group_by(Transaction.category_id)
+        )
+        return {r[0]: Decimal(r[1]) for r in rows.all()}
+
+    cur_cat = await cat_expenses(start, end)
+    prev_cat = await cat_expenses(prev_start, prev_end)
+    best_cat = None
+    best_delta = Decimal(0)
+    for cid, amt in cur_cat.items():
+        delta = amt - prev_cat.get(cid, Decimal(0))
+        if delta > best_delta:
+            best_delta, best_cat = delta, cid
+    if best_cat is not None and best_delta > 0:
+        cat = await db.execute(select(Category).where(Category.id == best_cat))
+        c = cat.scalar_one_or_none()
+        if c is not None:
+            items.append({"type": "warn", "title": "Categoría que más creció",
+                          "detail": f"Gastaste {_money(best_delta)} {currency} más en {c.name} que el mes pasado."})
+
+    # Movimientos sin categoría.
+    uncat = await db.execute(
+        select(func.count()).select_from(Transaction).join(Account)
+        .where(Account.user_id == current_user.id, Transaction.user_id == current_user.id,
+               Transaction.category_id.is_(None), Transaction.date >= start, Transaction.date < end,
+               Transaction.is_internal_transfer.is_(False), Transaction.is_duplicate.is_(False))
+    )
+    uncat_count = uncat.scalar() or 0
+    if uncat_count > 0:
+        items.append({"type": "warn", "title": "Por categorizar",
+                      "detail": f"Tienes {uncat_count} movimiento(s) sin categoría este mes."})
+
+    # Presupuestos excedidos.
+    budgets = await db.execute(
+        select(Budget).where(Budget.user_id == current_user.id, Budget.month == target)
+    )
+    over = 0
+    for b in budgets.scalars().all():
+        spent = cur_cat.get(b.category_id, Decimal(0))
+        if spent > Decimal(b.amount or 0):
+            over += 1
+    if over > 0:
+        items.append({"type": "err", "title": "Presupuestos excedidos",
+                      "detail": f"{over} presupuesto(s) superaron su tope este mes."})
+
+    return {"month": target, "currency": currency, "income": _money(cur["income"]),
+            "expenses": _money(cur["expenses"]), "net": _money(net), "items": items}

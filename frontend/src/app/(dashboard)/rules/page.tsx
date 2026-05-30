@@ -1,6 +1,6 @@
 "use client";
 
-import { categoriesApi, rulesApi } from "@/lib/api";
+import { categoriesApi, rulesApi, tagsApi } from "@/lib/api";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type {
   Category,
@@ -9,6 +9,7 @@ import type {
   RuleApplyResult,
   RulePreviewResult,
   RuleSuggestion,
+  Tag,
 } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { Loader2 } from "lucide-react";
@@ -27,6 +28,7 @@ function formatAmount(value: string): string {
 
 const emptyForm: CategoryRulePayload = {
   target_category_id: "",
+  target_tag_id: null,
   field: "description",
   operator: "contains",
   pattern: "",
@@ -57,6 +59,7 @@ export default function RulesPage() {
   const { user } = useAuthStore();
   const [rules, setRules] = useState<CategoryRule[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [form, setForm] = useState<CategoryRulePayload>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,9 +84,14 @@ export default function RulesPage() {
   async function loadData() {
     setIsLoading(true);
     try {
-      const [rulesResponse, categoriesResponse] = await Promise.all([rulesApi.list(), categoriesApi.list()]);
+      const [rulesResponse, categoriesResponse, tagsResponse] = await Promise.all([
+        rulesApi.list(),
+        categoriesApi.list(),
+        tagsApi.list(),
+      ]);
       setRules(rulesResponse.data);
       setCategories(categoriesResponse.data);
+      setTags(tagsResponse.data);
     } catch {
       setError("No se pudieron cargar las reglas.");
     } finally {
@@ -175,6 +183,7 @@ export default function RulesPage() {
     setEditingId(rule.id);
     setForm({
       target_category_id: rule.target_category_id,
+      target_tag_id: rule.target_tag_id,
       field: rule.field,
       operator: rule.operator,
       pattern: rule.pattern,
@@ -404,6 +413,20 @@ export default function RulesPage() {
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
+                </option>
+              ))}
+            </select>
+            <span className="font-mono text-[12px] text-[color:var(--text-3)]">+ etiqueta</span>
+            <select
+              className="input"
+              style={{ flex: "1 1 160px" }}
+              value={form.target_tag_id ?? ""}
+              onChange={(e) => setForm((v) => ({ ...v, target_tag_id: e.target.value || null }))}
+            >
+              <option value="">Sin etiqueta (opcional)</option>
+              {tags.map((tag) => (
+                <option key={tag.id} value={tag.id}>
+                  {tag.name}
                 </option>
               ))}
             </select>

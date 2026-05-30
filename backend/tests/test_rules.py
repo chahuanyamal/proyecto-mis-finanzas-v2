@@ -69,3 +69,49 @@ class TestRulePreviewAndApply:
             "field": "description", "operator": "contains", "pattern": "x",
         })
         assert resp.status_code == 401
+
+
+class TestAutoTagging:
+    async def _account(self, client):
+        r = await client.post("/api/v1/accounts", json={
+            "name": "AT", "account_type": "checking", "currency": "CLP", "balance": "0"})
+        return r.json()["id"]
+
+    async def _category(self, client, name):
+        r = await client.post("/api/v1/categories", json={"name": name})
+        return r.json()["id"]
+
+    async def _tag(self, client, name):
+        r = await client.post("/api/v1/tags", json={"name": name})
+        return r.json()["id"]
+
+    async def test_rule_applies_tag_to_historical(self, auth_client):
+        acc = await self._account(auth_client)
+        cat = await self._category(auth_client, "Transporte")
+        tag = await self._tag(auth_client, "viajes")
+        for i in range(2):
+            r = await auth_client.post("/api/v1/transactions", json={
+                "account_id": acc, "date": f"2026-02-0{i+1}", "description": f"UBER {i}",
+                "amount": "5000", "currency": "CLP", "movement_type": "expense"})
+            assert r.status_code == 201
+        rule = await auth_client.post("/api/v1/category-rules", json={
+            "target_category_id": cat, "target_tag_id": tag, "field": "description",
+            "operator": "contains", "pattern": "uber", "priority": 5})
+        assert rule.status_code == 201
+        assert rule.json()["target_tag_id"] == tag
+        applied = await auth_client.post(f"/api/v1/category-rules/{rule.json()['id']}/apply")
+        assert applied.status_code == 200
+        assert applied.json()["updated"] == 2
+        # Verifica que las transacciones quedaron etiquetadas.
+        txs = await auth_client.get("/api/v1/transactions")
+        payload = txs.json()
+        items = payload["items"] if isinstance(payload, dict) else payload
+        tagged = [t for t in items if any(tg["id"] == tag for tg in t["tags"])]
+        assert len(tagged) == 2
+
+    async def test_rule_rejects_foreign_tag(self, auth_client):
+        cat = await self._category(auth_client, "X")
+        r = await auth_client.post("/api/v1/category-rules", json={
+            "target_category_id": cat, "target_tag_id": "00000000-0000-0000-0000-000000000000",
+            "field": "description", "operator": "contains", "pattern": "z"})
+        assert r.status_code == 404

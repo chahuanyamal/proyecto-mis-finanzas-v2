@@ -13,7 +13,9 @@ from app.core.database import get_db
 from app.models.account import Account
 from app.models.category import Category
 from app.models.category_rule import CategoryRule
+from app.models.tag import Tag
 from app.models.transaction import Transaction
+from app.models.transaction_tag import TransactionTag
 from app.models.user import User
 from app.modules.transactions.normalize import normalize_merchant
 from app.modules.auth.deps import get_current_user
@@ -81,9 +83,18 @@ async def list_rules(db: AsyncSession = Depends(get_db), current_user: User = De
     return list(result.scalars().all())
 
 
+async def _ensure_tag(tag_id: uuid.UUID | None, db: AsyncSession, current_user: User) -> None:
+    if tag_id is None:
+        return
+    row = await db.execute(select(Tag.id).where(Tag.id == tag_id, Tag.user_id == current_user.id))
+    if row.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Etiqueta no encontrada")
+
+
 @router.post("", response_model=CategoryRuleOut, status_code=status.HTTP_201_CREATED)
 async def create_rule(body: CategoryRuleCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> CategoryRule:
     await ensure_category_visible(body.target_category_id, db, current_user.id)
+    await _ensure_tag(body.target_tag_id, db, current_user)
     rule = CategoryRule(user_id=current_user.id, **body.model_dump())
     db.add(rule)
     await db.flush()
@@ -129,15 +140,28 @@ async def apply_rule(
     """
     rule = await _rule_or_404(rule_id, db, current_user)
     matches = await _matching_transactions(db, current_user, rule.field, rule.operator, rule.pattern)
+    # Etiquetas ya asignadas (para no duplicar) cuando la regla tiene target_tag_id.
+    existing_tagged: set[uuid.UUID] = set()
+    if rule.target_tag_id is not None and matches:
+        tagged = await db.execute(
+            select(TransactionTag.transaction_id).where(
+                TransactionTag.tag_id == rule.target_tag_id,
+                TransactionTag.transaction_id.in_([tx.id for tx in matches]),
+            )
+        )
+        existing_tagged = {row[0] for row in tagged.all()}
     updated = 0
     for tx in matches:
-        if only_uncategorized and tx.category_id is not None:
-            continue
-        if tx.category_id == rule.target_category_id:
-            continue
-        tx.category_id = rule.target_category_id
-        tx.rule_id = rule.id
-        updated += 1
+        changed = False
+        if not (only_uncategorized and tx.category_id is not None) and tx.category_id != rule.target_category_id:
+            tx.category_id = rule.target_category_id
+            tx.rule_id = rule.id
+            changed = True
+        if rule.target_tag_id is not None and tx.id not in existing_tagged:
+            db.add(TransactionTag(transaction_id=tx.id, tag_id=rule.target_tag_id))
+            changed = True
+        if changed:
+            updated += 1
     if updated:
         await log_audit(
             db, user_id=current_user.id, action="apply", entity_type="rule",
@@ -214,6 +238,8 @@ async def update_rule(rule_id: uuid.UUID, body: CategoryRuleUpdate, db: AsyncSes
     changes = body.model_dump(exclude_unset=True)
     if "target_category_id" in changes and changes["target_category_id"] is not None:
         await ensure_category_visible(changes["target_category_id"], db, current_user.id)
+    if "target_tag_id" in changes:
+        await _ensure_tag(changes["target_tag_id"], db, current_user)
     for field, value in changes.items():
         setattr(rule, field, value)
     await db.commit()

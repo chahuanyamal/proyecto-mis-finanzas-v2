@@ -22,6 +22,7 @@ import type {
   BudgetPayload,
   BudgetSuggestion,
   CashflowForecast,
+  MonthlyInsights,
   CategoryAggregate,
   DashboardPeriod,
   DashboardSummary,
@@ -224,6 +225,8 @@ export const dashboardApi = {
     api.get<DashboardTrends>("/v1/dashboard/trends", { params: { months, currency } }),
   forecast: (days = 90, currency = "CLP") =>
     api.get<CashflowForecast>("/v1/dashboard/forecast", { params: { days, currency } }),
+  insights: (month?: string, currency = "CLP") =>
+    api.get<MonthlyInsights>("/v1/dashboard/insights", { params: { month, currency } }),
 };
 
 export const goalsApi = {

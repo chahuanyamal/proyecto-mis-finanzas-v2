@@ -1,9 +1,10 @@
 "use client";
 
-import { transactionsApi } from "@/lib/api";
-import type { CategoryAggregate, MonthAggregate } from "@/lib/api-types";
+import { dashboardApi, transactionsApi } from "@/lib/api";
+import type { CategoryAggregate, MonthAggregate, MonthlyInsights } from "@/lib/api-types";
 import { formatMoney } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
+import { usePeriodStore } from "@/stores/period";
 import { Loader2, TrendingDown, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -19,9 +20,11 @@ function ymOffset(offset: number): string {
 
 export default function InsightsPage() {
   const { user } = useAuthStore();
+  const currency = usePeriodStore((s) => s.currency);
   const [series, setSeries] = useState<MonthAggregate[]>([]);
   const [catThis, setCatThis] = useState<CategoryAggregate[]>([]);
   const [catPrev, setCatPrev] = useState<CategoryAggregate[]>([]);
+  const [insights, setInsights] = useState<MonthlyInsights | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -29,15 +32,16 @@ export default function InsightsPage() {
     setIsLoading(true);
     const rThis = monthRange(ymOffset(0)); const rPrev = monthRange(ymOffset(-1));
     try {
-      const [sr, ct, cp] = await Promise.all([
+      const [sr, ct, cp, ins] = await Promise.all([
         transactionsApi.byMonth({ months: 12 }),
         transactionsApi.byCategory({ start_date: rThis.start, end_date: rThis.end }),
         transactionsApi.byCategory({ start_date: rPrev.start, end_date: rPrev.end }),
+        dashboardApi.insights(undefined, currency),
       ]);
-      setSeries(sr.data); setCatThis(ct.data); setCatPrev(cp.data);
+      setSeries(sr.data); setCatThis(ct.data); setCatPrev(cp.data); setInsights(ins.data);
     } catch { setError("No se pudieron cargar los insights."); }
     finally { setIsLoading(false); }
-  }, []);
+  }, [currency]);
   useEffect(() => { if (user) void load(); }, [user, load]);
 
   const maxBar = useMemo(() => Math.max(1, ...series.flatMap((m) => [Number(m.income), Number(m.expense)])), [series]);
@@ -92,6 +96,41 @@ export default function InsightsPage() {
         </div>
       ) : (
         <>
+          <div className="panel" style={{ marginBottom: 20 }}>
+            <div className="panel-head">
+              <h3>Resumen del mes</h3>
+              {insights ? <span className="meta">{insights.month}</span> : null}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {insights && insights.items.length > 0 ? (
+                insights.items.map((item, i) => {
+                  const variant =
+                    item.type === "ok" ? "insight ok" : item.type === "err" ? "insight err" : "insight gold";
+                  const mark = item.type === "ok" ? "✓" : item.type === "err" ? "!" : "i";
+                  return (
+                    <div key={`${item.title}-${i}`} className={variant}>
+                      <div className="insight-mark">{mark}</div>
+                      <div className="insight-body">
+                        <div className="lbl">{item.title}</div>
+                        <div className="txt">{item.detail}</div>
+                      </div>
+                      <div />
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="insight ok">
+                  <div className="insight-mark">✓</div>
+                  <div className="insight-body">
+                    <div className="lbl">Sin novedades este mes</div>
+                    <div className="txt">No hay alertas ni hallazgos relevantes por ahora.</div>
+                  </div>
+                  <div />
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className={`insight ${savingsRate >= 0 ? "ok" : "err"}`}>
             <div className="insight-mark">{savingsRate >= 0 ? "✓" : "!"}</div>
             <div className="insight-body">

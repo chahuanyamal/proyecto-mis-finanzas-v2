@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { QueryProvider } from "@/lib/query-client";
 import "@/styles/globals.css";
@@ -30,6 +30,12 @@ const instrumentSerif = Instrument_Serif({
 export const metadata: Metadata = {
   title: "Mis Finanzas V2",
   description: "Dashboard financiero personal",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "Finanzas", statusBarStyle: "black-translucent" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a0a0b",
 };
 
 export default function RootLayout({

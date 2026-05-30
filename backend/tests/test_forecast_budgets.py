@@ -63,3 +63,14 @@ class TestBudgetSuggestions:
             "category_id": cat, "month": month, "amount": "50000", "alert_at_percent": 80})
         r = await auth_client.get("/api/v1/budgets/suggestions", params={"month": month})
         assert all(s["category_id"] != cat for s in r.json())
+
+
+class TestMonthlyInsights:
+    async def test_insights_basic(self, auth_client):
+        r = await auth_client.get("/api/v1/dashboard/insights")
+        assert r.status_code == 200
+        body = r.json()
+        assert "items" in body and isinstance(body["items"], list)
+
+    async def test_insights_requires_auth(self, client):
+        assert (await client.get("/api/v1/dashboard/insights")).status_code == 401

@@ -1,10 +1,10 @@
 "use client";
 
 import { accountsApi, statementsApi } from "@/lib/api";
-import type { Account, ParserOption, StatementQualityStats, StatementUpload } from "@/lib/api-types";
-import type { StatementPreview } from "@/lib/api-types";
+import type { StatementUpload } from "@/lib/api-types";
 import StatementPreviewCard from "@/components/statements/StatementPreviewCard";
 import { useAuthStore } from "@/stores/auth";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Upload } from "lucide-react";
 import Link from "next/link";
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -51,59 +51,100 @@ function statusProgress(status: string): { width: string; color: string } {
 
 export default function StatementsPage() {
   const { user } = useAuthStore();
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [statements, setStatements] = useState<StatementUpload[]>([]);
-  const [previews, setPreviews] = useState<StatementPreview[]>([]);
-  const [parsers, setParsers] = useState<ParserOption[]>([]);
-  const [qualityStats, setQualityStats] = useState<StatementQualityStats | null>(null);
+  const queryClient = useQueryClient();
+  const enabled = Boolean(user);
+
+  const accountsQuery = useQuery({
+    queryKey: ["accounts"],
+    queryFn: async () => (await accountsApi.list()).data,
+    enabled,
+  });
+  const statementsQuery = useQuery({
+    queryKey: ["statements", "list"],
+    queryFn: async () => (await statementsApi.list()).data,
+    enabled,
+  });
+  const previewsQuery = useQuery({
+    queryKey: ["statements", "previews"],
+    queryFn: async () => (await statementsApi.previews()).data,
+    enabled,
+  });
+  const parsersQuery = useQuery({
+    queryKey: ["statements", "parsers"],
+    queryFn: async () => (await statementsApi.parsers()).data,
+    enabled,
+  });
+  const qualityQuery = useQuery({
+    queryKey: ["statements", "quality-stats"],
+    queryFn: async () => (await statementsApi.qualityStats()).data,
+    enabled,
+  });
+
+  const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
+  const statements = useMemo(() => statementsQuery.data ?? [], [statementsQuery.data]);
+  const previews = useMemo(() => previewsQuery.data ?? [], [previewsQuery.data]);
+  const parsers = useMemo(() => parsersQuery.data ?? [], [parsersQuery.data]);
+  const qualityStats = qualityQuery.data ?? null;
+
   const [accountId, setAccountId] = useState("");
   const [parserKey, setParserKey] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [isBusy, setIsBusy] = useState(false);
   const [message, setMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function loadData() {
-    const [acc, st, pr, parserOptions, quality] = await Promise.all([
-      accountsApi.list(),
-      statementsApi.list(),
-      statementsApi.previews(),
-      statementsApi.parsers(),
-      statementsApi.qualityStats(),
-    ]);
-    setAccounts(acc.data);
-    setStatements(st.data);
-    setPreviews(pr.data);
-    setParsers(parserOptions.data);
-    setQualityStats(quality.data);
-    if (!accountId && acc.data[0]) setAccountId(acc.data[0].id);
-  }
-  useEffect(() => { if (user) void loadData(); }, [user]);
+  // Preselecciona la primera cuenta una vez cargadas, manteniendo el comportamiento previo.
+  useEffect(() => {
+    if (!accountId && accounts[0]) setAccountId(accounts[0].id);
+  }, [accounts, accountId]);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!accountId || !file) return;
-    setIsBusy(true);
-    setMessage("");
-    try {
-      const response = await statementsApi.preview(accountId, file, parserKey || undefined);
+  // Invalida los datos de la página y los contadores del nav afectados por cartolas.
+  function invalidateAll() {
+    queryClient.invalidateQueries({ queryKey: ["statements"] });
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    queryClient.invalidateQueries({ queryKey: ["nav-count", "statements"] });
+    queryClient.invalidateQueries({ queryKey: ["nav-count", "tx-summary"] });
+    queryClient.invalidateQueries({ queryKey: ["nav-count", "review"] });
+  }
+
+  // `onChanged` para StatementPreviewCard: refresca tras editar/confirmar/cancelar un preview.
+  async function loadData() {
+    invalidateAll();
+  }
+
+  const previewMutation = useMutation({
+    mutationFn: (vars: { accountId: string; file: File; parserKey?: string }) =>
+      statementsApi.preview(vars.accountId, vars.file, vars.parserKey),
+    onSuccess: (response) => {
       const rows = response.data.rows.length;
       const bank = response.data.bank_detected ?? "desconocido";
       const mode = parserKey ? `parser forzado: ${parserKey}` : "parser automatico";
       setMessage(`Preview creado: ${rows} transacciones detectadas (banco: ${bank}, ${mode}).`);
       setFile(null);
-      await loadData();
-    } catch {
+      invalidateAll();
+    },
+    onError: () => {
       setMessage("No se pudo generar preview del PDF.");
-    } finally {
-      setIsBusy(false);
-    }
+    },
+  });
+  const isBusy = previewMutation.isPending;
+
+  const reprocessMutation = useMutation({
+    mutationFn: (id: string) => statementsApi.reprocess(id),
+    onSuccess: (res) => {
+      setMessage(`Reprocesadas ${res.data.imported_transactions} transacciones.`);
+      invalidateAll();
+    },
+  });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!accountId || !file) return;
+    setMessage("");
+    previewMutation.mutate({ accountId, file, parserKey: parserKey || undefined });
   }
 
-  async function reprocess(id: string) {
-    const res = await statementsApi.reprocess(id);
-    setMessage(`Reprocesadas ${res.data.imported_transactions} transacciones.`);
-    await loadData();
+  function reprocess(id: string) {
+    reprocessMutation.mutate(id);
   }
 
   const statusCounts = useMemo(() => {

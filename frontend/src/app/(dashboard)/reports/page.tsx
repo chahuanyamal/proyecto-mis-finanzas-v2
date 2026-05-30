@@ -6,7 +6,8 @@ import { useAuthStore } from "@/stores/auth";
 import { usePeriodStore } from "@/stores/period";
 import { Download, Loader2 } from "lucide-react";
 import { formatMoney } from "@/lib/format";
-import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 function currentYear(): number {
   return new Date().getFullYear();
@@ -16,24 +17,15 @@ export default function ReportsPage() {
   const { user } = useAuthStore();
   const [year, setYear] = useState(currentYear());
   const currency = usePeriodStore((s) => s.currency);
-  const [report, setReport] = useState<AnnualReport | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    setIsLoading(true);
-    setError("");
-    reportsApi.annual(year).then((response) => {
-      if (!cancelled) setReport(response.data);
-    }).catch(() => {
-      if (!cancelled) setError("No se pudo cargar el reporte anual.");
-    }).finally(() => {
-      if (!cancelled) setIsLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [year, user]);
+  const reportQuery = useQuery({
+    queryKey: ["reports", "annual", year],
+    queryFn: async () => (await reportsApi.annual(year)).data,
+    enabled: Boolean(user),
+  });
+  const report: AnnualReport | null = reportQuery.data ?? null;
+  const isLoading = reportQuery.isPending;
+  const error = reportQuery.isError ? "No se pudo cargar el reporte anual." : "";
 
   const total = report?.totals.find((item) => item.currency === currency) ?? null;
   const months = useMemo(() => (report?.by_month ?? []).filter((item) => item.currency === currency), [currency, report]);
