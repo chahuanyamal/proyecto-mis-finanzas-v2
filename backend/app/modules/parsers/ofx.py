@@ -43,74 +43,117 @@ class OfxParseResult:
 
 def parse_ofx(content: bytes) -> OfxParseResult:
     text = content.decode("utf-8", errors="replace").strip()
-    if text.startswith("<?xml") or "<OFX>" in text.upper():
-        return _parse_xml(text)
-    return _parse_sgml(text)
+    # OFX 1.x es SGML (tags hoja sin cerrar) y 2.x es XML. Normalizamos ambos a
+    # XML bien formado y parseamos por una sola vía robusta.
+    return _parse_xml(_sgml_to_xml(text))
+
+
+def _local(tag: str) -> str:
+    """Nombre local de un tag, ignorando namespace ({ns}TAG → TAG)."""
+    return tag.split("}")[-1] if "}" in tag else tag
+
+
+def _sgml_to_xml(text: str) -> str:
+    """Convierte OFX SGML (y limpia el preámbulo OFXHEADER) a XML bien formado.
+
+    - Descarta todo lo anterior a ``<OFX>`` (cabecera ``OFXHEADER:...``).
+    - Auto-cierra los tags hoja del estilo ``<TAG>valor`` → ``<TAG>valor</TAG>``.
+    - Deja intactos los tags de apertura/cierre de agregados y los ya cerrados.
+    """
+    idx = text.upper().find("<OFX>")
+    if idx > 0:
+        text = text[idx:]
+    out: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        match = re.match(r"^<(\w+)>(.+)$", stripped)
+        # Solo cerramos cuando hay valor y aún no contiene otro tag (no está cerrado).
+        if match and "<" not in match.group(2):
+            tag, value = match.group(1), match.group(2).strip()
+            out.append(f"<{tag}>{value}</{tag}>")
+        else:
+            out.append(stripped)
+    return _balance_tags("\n".join(out))
+
+
+def _balance_tags(text: str) -> str:
+    """Equilibra tags para tolerar OFX malformado (cierres huérfanos/sobrantes).
+
+    Recorre la secuencia de tags manteniendo una pila: descarta cierres sin
+    apertura y cierra agregados pendientes, produciendo XML bien formado.
+    """
+    stack: list[str] = []
+    out: list[str] = []
+    for tok in re.split(r"(<[^>]+>)", text):
+        if not tok.startswith("<"):
+            out.append(tok)
+            continue
+        m = re.match(r"<(/?)(\w+)\s*(/?)>", tok)
+        if not m:  # declaración <?xml?>, comentarios, etc.
+            out.append(tok)
+            continue
+        closing, name, selfclose = m.group(1), m.group(2), m.group(3)
+        if selfclose:
+            out.append(tok)
+        elif not closing:
+            stack.append(name)
+            out.append(tok)
+        elif name in stack:
+            while stack and stack[-1] != name:
+                out.append(f"</{stack.pop()}>")
+            stack.pop()
+            out.append(tok)
+        # cierre huérfano (name no está en la pila): se descarta
+    while stack:
+        out.append(f"</{stack.pop()}>")
+    return "".join(out)
+
+
+def _find_node(root: ET.Element, name: str) -> ET.Element | None:
+    for elem in root.iter():
+        if _local(elem.tag) == name:
+            return elem
+    return None
+
+
+def _node_text(node: ET.Element, name: str) -> str | None:
+    for elem in node.iter():
+        if _local(elem.tag) == name:
+            return (elem.text or "").strip() or None
+    return None
 
 
 def _parse_xml(text: str) -> OfxParseResult:
     try:
         root = ET.fromstring(text)
     except ET.ParseError as exc:
-        raise ValueError(f"OFX XML inválido: {exc}") from exc
+        raise ValueError(f"OFX inválido: {exc}") from exc
 
-    ns: dict[str, str] = {}
-    for event, elem in ET.iterwalk(root, events=("start",)):
-        if event == "start" and elem.tag.endswith("}OFX"):
-            ns = {child.tag.split("}")[0].strip("{"): "}" + child.tag.split("}")[0].strip("{") + "}" for child in elem if "}" in child.tag}
+    account_id: str | None = None
+    account_type: str | None = None
+    bank_id: str | None = None
+
+    for acct_tag, default_type in (("BANKACCTFROM", None), ("CCACCTFROM", "CREDITCARD")):
+        node = _find_node(root, acct_tag)
+        if node is not None:
+            account_id = _node_text(node, "ACCTID")
+            account_type = _node_text(node, "ACCTTYPE") or default_type
+            bank_id = _node_text(node, "BANKID")
             break
 
-    def find(root_elem: ET.Element, tag: str) -> str | None:
-        for elem in root_elem.iter():
-            if elem.tag.endswith(f"}}{tag}") or elem.tag == tag:
-                return elem.text and elem.text.strip() or None
-        return None
-
-    stmt_trnrs = root.findall(".//{*}STMTTRNRS") or root.findall(".//STMTTRNRS")
-    stmt_trn = root.findall(".//{*}STMTTRN") or root.findall(".//STMTTRN")
-
-    bank_msgs_rq = root.find(".//{*}BANKMSGSRQSV1") or root.find(".//BANKMSGSRQSV1")
-    cc_msgs_rq = root.find(".//{*}CCSTMTRS") or root.find(".//CCSTMTRS")
-
-    account_id = None
-    account_type = None
-    currency = "CLP"
-    bank_id = None
     closing_balance = None
-    closing_date = None
-    opening_balance = None
+    ledger_bal = _find_node(root, "LEDGERBAL")
+    if ledger_bal is not None:
+        closing_balance = _parse_ofx_amount(_node_text(ledger_bal, "BALAMT"))
 
-    if stmt_trnrs:
-        bank_acct_from = stmt_trnrs[0].find(".//{*}BANKACCTFROM") or stmt_trnrs[0].find(".//BANKACCTFROM")
-        if bank_acct_from is not None:
-            account_id = bank_acct_from.findtext("{*}ACCTID") or bank_acct_from.findtext("ACCTID")
-            account_type = bank_acct_from.findtext("{*}ACCTTYPE") or bank_acct_from.findtext("ACCTTYPE")
-            bank_id = bank_acct_from.findtext("{*}BANKID") or bank_acct_from.findtext("BANKID")
-        cc_acct_from = stmt_trnrs[0].find(".//{*}CCACCTFROM") or stmt_trnrs[0].find(".//CCACCTFROM")
-        if cc_acct_from is not None:
-            account_id = cc_acct_from.findtext("{*}ACCTID") or cc_acct_from.findtext("ACCTID")
-            account_type = "CREDITCARD"
-            bank_id = cc_acct_from.findtext("{*}BANKID") or cc_acct_from.findtext("BANKID")
-        ledger_bal = stmt_trnrs[0].find(".//{*}LEDGERBAL") or stmt_trnrs[0].find(".//LEDGERBAL")
-        if ledger_bal is not None:
-            closing_balance = ledger_bal.findtext("{*}BALAMT") or ledger_bal.findtext("BALAMT")
-            closing_date = ledger_bal.findtext("{*}DTASOF") or ledger_bal.findtext("DTASOF")
-
-    elif cc_msgs_rq or bank_msgs_rq:
-        target = cc_msgs_rq or bank_msgs_rq
-        account_id = target.findtext("{*}CCACCTFROM/{*}ACCTID") or target.findtext("CCACCTFROM/ACCTID")
-        if not account_id:
-            account_id = target.findtext("{*}BANKACCTFROM/{*}ACCTID") or target.findtext("BANKACCTFROM/ACCTID")
-        account_type = target.findtext("{*}CCACCTFROM/{*}ACCTTYPE") or target.findtext("CCACCTFROM/ACCTTYPE")
+    currency = _node_text(root, "CURDEF") or "CLP"
 
     transactions: list[OfxTransactionDict] = []
-
     for elem in root.iter():
-        tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-        if tag == "STMTTRN":
-            t = _parse_ofx_transaction(elem)
-            if t:
-                transactions.append(t)
+        if _local(elem.tag) == "STMTTRN":
+            parsed = _parse_ofx_transaction(elem)
+            if parsed:
+                transactions.append(parsed)
 
     period_start = None
     period_end = None
@@ -119,8 +162,6 @@ def _parse_xml(text: str) -> OfxParseResult:
         period_start = min(dates)
         period_end = max(dates)
 
-    parsed_closing = _parse_ofx_amount(closing_balance) if closing_balance else None
-
     return OfxParseResult(
         bank_detected=f"ofx:{bank_id or 'generic'}",
         account_id=account_id,
@@ -128,8 +169,8 @@ def _parse_xml(text: str) -> OfxParseResult:
         currency=currency,
         period_start=period_start,
         period_end=period_end,
-        opening_balance=opening_balance,
-        closing_balance=parsed_closing,
+        opening_balance=None,
+        closing_balance=closing_balance,
         transactions=transactions,
         warnings=[],
     )

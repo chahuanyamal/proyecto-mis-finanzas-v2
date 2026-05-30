@@ -136,4 +136,6 @@ def compare_payoff_strategies(
             "schedule": schedule[:6],
         })
 
+    # Ordenadas de la más rápida a la más lenta en saldar la deuda.
+    results.sort(key=lambda r: r["months_to_payoff"])
     return results
