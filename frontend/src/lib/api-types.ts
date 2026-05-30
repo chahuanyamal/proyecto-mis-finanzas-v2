@@ -68,6 +68,7 @@ export interface CategoryRule {
   id: string;
   user_id: string;
   target_category_id: string;
+  target_tag_id: string | null;
   field: string;
   operator: string;
   pattern: string;
@@ -75,8 +76,24 @@ export interface CategoryRule {
   target_category: Category | null;
 }
 
+export interface MonthlyInsightItem {
+  type: "ok" | "warn" | "err" | "neutral";
+  title: string;
+  detail: string;
+}
+
+export interface MonthlyInsights {
+  month: string;
+  currency: string;
+  income: string;
+  expenses: string;
+  net: string;
+  items: MonthlyInsightItem[];
+}
+
 export interface CategoryRulePayload {
   target_category_id: string;
+  target_tag_id?: string | null;
   field: string;
   operator: string;
   pattern: string;

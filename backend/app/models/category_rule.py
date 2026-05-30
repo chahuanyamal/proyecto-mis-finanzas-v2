@@ -21,6 +21,9 @@ class CategoryRule(Base, TimestampMixin):
     target_category_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("categories.id", ondelete="CASCADE"), nullable=False
     )
+    target_tag_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tags.id", ondelete="SET NULL"), nullable=True
+    )
     field: Mapped[str] = mapped_column(
         String(50), nullable=False, default="description"
     )
