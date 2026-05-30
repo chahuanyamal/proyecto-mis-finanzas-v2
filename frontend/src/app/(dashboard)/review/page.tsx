@@ -4,6 +4,7 @@ import { categoriesApi, rulesApi, transactionsApi } from "@/lib/api";
 import type { Category, Transaction } from "@/lib/api-types";
 import { formatMoney, plain } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
@@ -33,46 +34,50 @@ const kbdStyle: CSSProperties = {
 
 export default function ReviewPage() {
   const { user } = useAuthStore();
-  const [uncategorized, setUncategorized] = useState<Transaction[]>([]);
-  const [flagged, setFlagged] = useState<Transaction[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<Drafts>({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [isApplyingRules, setIsApplyingRules] = useState(false);
-  const [error, setError] = useState("");
+  const [localError, setLocalError] = useState("");
   const [info, setInfo] = useState("");
   const [tab, setTab] = useState<QueueTab>("all");
   const [cursor, setCursor] = useState(0);
   const [createRule, setCreateRule] = useState(true);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError("");
-    try {
+  const reviewQuery = useQuery({
+    queryKey: ["review"],
+    queryFn: async () => {
       const [unc, flg, cat] = await Promise.all([
         transactionsApi.list({ only_uncategorized: true, exclude_internal: true, exclude_duplicates: true, page_size: 200 }),
         transactionsApi.list({ only_flagged: true, page_size: 100 }),
         categoriesApi.list(),
       ]);
-      setUncategorized(unc.data.items);
-      setFlagged(flg.data.items);
-      setCategories(cat.data);
-      setDrafts((current) => {
-        const next = { ...current };
-        for (const tx of unc.data.items) {
-          if (!next[tx.id]) next[tx.id] = { categoryId: "", pattern: suggestedPattern(tx.description) };
-        }
-        return next;
-      });
-    } catch {
-      setError("No se pudo cargar la bandeja de revision.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+      return { uncategorized: unc.data.items, flagged: flg.data.items, categories: cat.data };
+    },
+    enabled: Boolean(user),
+  });
 
-  useEffect(() => { if (user) void load(); }, [user, load]);
+  const uncategorized = useMemo<Transaction[]>(() => reviewQuery.data?.uncategorized ?? [], [reviewQuery.data]);
+  const flagged = useMemo<Transaction[]>(() => reviewQuery.data?.flagged ?? [], [reviewQuery.data]);
+  const categories = useMemo<Category[]>(() => reviewQuery.data?.categories ?? [], [reviewQuery.data]);
+  const isLoading = reviewQuery.isPending;
+
+  // Inicializa drafts (categoría + patrón sugerido) para movimientos sin categoría.
+  useEffect(() => {
+    if (uncategorized.length === 0) return;
+    setDrafts((current) => {
+      const next = { ...current };
+      for (const tx of uncategorized) {
+        if (!next[tx.id]) next[tx.id] = { categoryId: "", pattern: suggestedPattern(tx.description) };
+      }
+      return next;
+    });
+  }, [uncategorized]);
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ["review"] });
+    queryClient.invalidateQueries({ queryKey: ["nav-count", "review"] });
+    queryClient.invalidateQueries({ queryKey: ["nav-count", "transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["nav-count", "tx-summary"] });
+  }
 
   function updateDraft(id: string, changes: Partial<Drafts[string]>) {
     setDrafts((current) => {
@@ -81,36 +86,16 @@ export default function ReviewPage() {
     });
   }
 
-  async function assign(tx: Transaction) {
-    const categoryId = drafts[tx.id]?.categoryId;
-    if (!categoryId) {
-      setError("Selecciona una categoria primero.");
-      return;
-    }
-    setBusyId(tx.id);
-    setError("");
-    setInfo("");
-    try {
-      await transactionsApi.update(tx.id, { category_id: categoryId });
-      setInfo("Movimiento categorizado.");
-      await load();
-    } catch {
-      setError("No se pudo categorizar el movimiento.");
-    } finally {
-      setBusyId(null);
-    }
-  }
+  const assignMutation = useMutation({
+    mutationFn: ({ tx, categoryId }: { tx: Transaction; categoryId: string }) =>
+      transactionsApi.update(tx.id, { category_id: categoryId }),
+    onMutate: () => { setLocalError(""); setInfo(""); },
+    onSuccess: () => { setInfo("Movimiento categorizado."); invalidate(); },
+    onError: () => { setLocalError("No se pudo categorizar el movimiento."); },
+  });
 
-  async function createRuleAndApply(tx: Transaction) {
-    const draft = drafts[tx.id];
-    if (!draft?.categoryId || !draft.pattern.trim()) {
-      setError("Selecciona una categoria y define el patron de la regla.");
-      return;
-    }
-    setBusyId(tx.id);
-    setError("");
-    setInfo("");
-    try {
+  const createRuleMutation = useMutation({
+    mutationFn: async ({ draft }: { tx: Transaction; draft: Drafts[string] }) => {
       await rulesApi.create({
         target_category_id: draft.categoryId,
         field: "description",
@@ -118,42 +103,54 @@ export default function ReviewPage() {
         pattern: draft.pattern.trim(),
         priority: 100,
       });
-      const { data } = await transactionsApi.autoCategorize();
-      setInfo(`Regla creada. ${data.updated} movimiento(s) categorizado(s).`);
-      await load();
-    } catch {
-      setError("No se pudo crear la regla.");
-    } finally {
-      setBusyId(null);
+      return (await transactionsApi.autoCategorize()).data;
+    },
+    onMutate: () => { setLocalError(""); setInfo(""); },
+    onSuccess: (data) => { setInfo(`Regla creada. ${data.updated} movimiento(s) categorizado(s).`); invalidate(); },
+    onError: () => { setLocalError("No se pudo crear la regla."); },
+  });
+
+  const applyRulesMutation = useMutation({
+    mutationFn: async () => (await transactionsApi.autoCategorize()).data,
+    onMutate: () => { setLocalError(""); setInfo(""); },
+    onSuccess: (data) => { setInfo(`Reglas aplicadas. ${data.updated} movimiento(s) actualizado(s).`); invalidate(); },
+    onError: () => { setLocalError("No se pudieron aplicar las reglas."); },
+  });
+
+  const unflagMutation = useMutation({
+    mutationFn: (id: string) => transactionsApi.setFlag(id, false),
+    onSuccess: () => { invalidate(); },
+    onError: () => { setLocalError("No se pudo desmarcar el movimiento."); },
+  });
+
+  const isApplyingRules = applyRulesMutation.isPending;
+  const busyId =
+    (assignMutation.isPending ? assignMutation.variables?.tx.id : undefined)
+    ?? (createRuleMutation.isPending ? createRuleMutation.variables?.tx.id : undefined)
+    ?? (unflagMutation.isPending ? unflagMutation.variables : undefined)
+    ?? null;
+  const error = localError || (reviewQuery.isError ? "No se pudo cargar la bandeja de revision." : "");
+
+  function assign(tx: Transaction) {
+    const categoryId = drafts[tx.id]?.categoryId;
+    if (!categoryId) {
+      setLocalError("Selecciona una categoria primero.");
+      return;
     }
+    assignMutation.mutate({ tx, categoryId });
   }
 
-  async function applyRules() {
-    setIsApplyingRules(true);
-    setError("");
-    setInfo("");
-    try {
-      const { data } = await transactionsApi.autoCategorize();
-      setInfo(`Reglas aplicadas. ${data.updated} movimiento(s) actualizado(s).`);
-      await load();
-    } catch {
-      setError("No se pudieron aplicar las reglas.");
-    } finally {
-      setIsApplyingRules(false);
+  function createRuleAndApply(tx: Transaction) {
+    const draft = drafts[tx.id];
+    if (!draft?.categoryId || !draft.pattern.trim()) {
+      setLocalError("Selecciona una categoria y define el patron de la regla.");
+      return;
     }
+    createRuleMutation.mutate({ tx, draft });
   }
 
-  async function unflag(id: string) {
-    setBusyId(id);
-    try {
-      await transactionsApi.setFlag(id, false);
-      await load();
-    } catch {
-      setError("No se pudo desmarcar el movimiento.");
-    } finally {
-      setBusyId(null);
-    }
-  }
+  function applyRules() { applyRulesMutation.mutate(); }
+  function unflag(id: string) { unflagMutation.mutate(id); }
 
   // Cola unificada según pestaña. "flagged" muestra marcados; resto, sin categoría.
   const queue = useMemo<Transaction[]>(() => {
@@ -168,11 +165,11 @@ export default function ReviewPage() {
   const isFlaggedView = tab === "flagged";
 
   // Aplica al item actual: crea regla (si está activo y hay patrón) o solo categoriza.
-  const applyCurrent = useCallback(async (withRule: boolean) => {
+  const applyCurrent = useCallback((withRule: boolean) => {
     if (!current) return;
-    const draft = drafts[current.id];
-    if (withRule && draft?.categoryId && draft.pattern.trim()) await createRuleAndApply(current);
-    else await assign(current);
+    const d = drafts[current.id];
+    if (withRule && d?.categoryId && d.pattern.trim()) createRuleAndApply(current);
+    else assign(current);
   }, [current, drafts]);
 
   // Atajos de teclado: ↑/↓ navega, 1–9 elige categoría, ⏎ aplica+regla, ⇧⏎ solo este, S salta.
@@ -190,7 +187,7 @@ export default function ReviewPage() {
         const cat = categories[idx];
         if (cat && current) updateDraft(current.id, { categoryId: cat.id });
       }
-      else if (e.key === "Enter" && !isFlaggedView) { e.preventDefault(); void applyCurrent(!e.shiftKey); }
+      else if (e.key === "Enter" && !isFlaggedView) { e.preventDefault(); applyCurrent(!e.shiftKey); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -211,7 +208,7 @@ export default function ReviewPage() {
           <div className="sub mono" style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6, letterSpacing: "0.04em" }}>
             {uncategorized.length + flagged.length} ITEMS · {uncategorized.length} SIN CAT · {flagged.length} MARCADOS
           </div>
-          <button type="button" onClick={() => void applyRules()} disabled={isApplyingRules} className="btn ghost" style={{ marginTop: 12, width: "100%" }}>
+          <button type="button" onClick={() => applyRules()} disabled={isApplyingRules} className="btn ghost" style={{ marginTop: 12, width: "100%" }}>
             {isApplyingRules ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
             Aplicar reglas
           </button>
@@ -310,7 +307,7 @@ export default function ReviewPage() {
 
             {isFlaggedView ? (
               <div className="actions" style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 6 }}>
-                <button type="button" onClick={() => void unflag(current.id)} disabled={isBusy} className="btn primary lg">{isBusy ? "…" : "Desmarcar"}</button>
+                <button type="button" onClick={() => unflag(current.id)} disabled={isBusy} className="btn primary lg">{isBusy ? "…" : "Desmarcar"}</button>
                 <span className="mono skip" style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-3)", cursor: "pointer" }} onClick={() => setCursor((c) => Math.min(c + 1, queue.length - 1))}>Saltar · <kbd className="mono" style={kbdStyle}>S</kbd></span>
               </div>
             ) : (
@@ -359,8 +356,8 @@ export default function ReviewPage() {
                 </div>
 
                 <div className="actions" style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 6 }}>
-                  <button type="button" onClick={() => void applyCurrent(createRule)} disabled={isBusy} className="btn primary lg">{isBusy ? "…" : "Aplicar y siguiente"}<kbd className="mono" style={kbdStyle}>⏎</kbd></button>
-                  <button type="button" onClick={() => void assign(current)} disabled={isBusy} className="btn ghost lg">Solo este<kbd className="mono" style={kbdStyle}>⇧⏎</kbd></button>
+                  <button type="button" onClick={() => applyCurrent(createRule)} disabled={isBusy} className="btn primary lg">{isBusy ? "…" : "Aplicar y siguiente"}<kbd className="mono" style={kbdStyle}>⏎</kbd></button>
+                  <button type="button" onClick={() => assign(current)} disabled={isBusy} className="btn ghost lg">Solo este<kbd className="mono" style={kbdStyle}>⇧⏎</kbd></button>
                   <span className="mono skip" style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-3)", cursor: "pointer" }} onClick={() => setCursor((c) => Math.min(c + 1, queue.length - 1))}>Saltar · <kbd className="mono" style={kbdStyle}>S</kbd></span>
                 </div>
               </>

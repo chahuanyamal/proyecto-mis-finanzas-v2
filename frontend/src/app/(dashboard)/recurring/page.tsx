@@ -4,7 +4,8 @@ import { categoriesApi, recurringApi } from "@/lib/api";
 import type { Category, Recurring, RecurringDetectResult, RecurringPayload, UpcomingRecurring } from "@/lib/api-types";
 import { asNumber, plain } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FormEvent, useMemo, useState } from "react";
 
 const FREQ_LABELS: Record<string, string> = { weekly: "Semanal", monthly: "Mensual", yearly: "Anual" };
 const MONTH_NAMES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -35,29 +36,36 @@ function monthlyEquiv(amount: number, frequency: string): number {
 
 export default function RecurringPage() {
   const { user } = useAuthStore();
-  const [items, setItems] = useState<Recurring[]>([]);
-  const [upcoming, setUpcoming] = useState<UpcomingRecurring[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<RecurringPayload>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [error, setError] = useState("");
   const [info, setInfo] = useState("");
-  const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [addingCandidate, setAddingCandidate] = useState<string | null>(null);
 
-  async function load() {
-    try {
+  const recurringQuery = useQuery({
+    queryKey: ["recurring"],
+    queryFn: async () => {
       const [r, c, u] = await Promise.all([recurringApi.list(), categoriesApi.list(), recurringApi.upcoming(45)]);
-      setItems(r.data); setCategories(c.data); setUpcoming(u.data);
-    } catch { setError("No se pudieron cargar los recurrentes."); }
+      return { items: r.data, categories: c.data, upcoming: u.data };
+    },
+    enabled: Boolean(user),
+  });
+  const candidatesQuery = useQuery({
+    queryKey: ["recurring", "candidates"],
+    queryFn: async () => (await recurringApi.candidates()).data.items,
+    enabled: Boolean(user),
+  });
+
+  const items = useMemo<Recurring[]>(() => recurringQuery.data?.items ?? [], [recurringQuery.data]);
+  const categories = useMemo<Category[]>(() => recurringQuery.data?.categories ?? [], [recurringQuery.data]);
+  const upcoming = useMemo<UpcomingRecurring[]>(() => recurringQuery.data?.upcoming ?? [], [recurringQuery.data]);
+  const candidates = useMemo<Candidate[]>(() => candidatesQuery.data ?? [], [candidatesQuery.data]);
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ["recurring"] });
+    queryClient.invalidateQueries({ queryKey: ["nav-count", "recurring"] });
   }
-  async function loadCandidates() {
-    try { const res = await recurringApi.candidates(); setCandidates(res.data.items); }
-    catch { /* el banner es opcional; ignoramos errores de candidatos */ }
-  }
-  useEffect(() => { if (user) { void load(); void loadCandidates(); } }, [user]);
 
   function reset() { setForm(emptyForm); setEditingId(null); setShowForm(false); }
   function startCreate() { setForm(emptyForm); setEditingId(null); setShowForm(true); }
@@ -69,41 +77,62 @@ export default function RecurringPage() {
     });
     setShowForm(true);
   }
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const payload: RecurringPayload = { ...form, category_id: form.category_id || null, next_date: form.next_date || null };
-    try {
-      if (editingId) await recurringApi.update(editingId, payload);
-      else await recurringApi.create(payload);
-      reset(); await load();
-    } catch { setError("No se pudo guardar el recurrente."); }
-  }
-  async function toggleActive(item: Recurring) {
-    try { await recurringApi.update(item.id, { active: !item.active }); await load(); } catch { setError("No se pudo actualizar."); }
-  }
-  async function remove(id: string) {
-    try { await recurringApi.remove(id); reset(); await load(); } catch { setError("No se pudo eliminar."); }
-  }
-  async function detect() {
-    setBusy(true); setError(""); setInfo("");
-    try {
-      const res = await recurringApi.detect();
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: RecurringPayload) => (editingId ? recurringApi.update(editingId, payload) : recurringApi.create(payload)),
+    onSuccess: () => { reset(); invalidate(); },
+  });
+  const toggleMutation = useMutation({
+    mutationFn: (item: Recurring) => recurringApi.update(item.id, { active: !item.active }),
+    onSuccess: () => { invalidate(); },
+  });
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => recurringApi.remove(id),
+    onSuccess: () => { reset(); invalidate(); },
+  });
+  const detectMutation = useMutation({
+    mutationFn: () => recurringApi.detect(),
+    onSuccess: (res) => {
       setInfo(`Detección completa: ${res.data.created} recurrente(s) creado(s) de ${res.data.detected} detectado(s).`);
-      await Promise.all([load(), loadCandidates()]);
-    } catch { setError("No se pudo detectar recurrentes."); }
-    finally { setBusy(false); }
-  }
-  async function addCandidate(c: Candidate) {
-    const key = `${normName(c.name)}|${c.amount}|${c.frequency}`;
-    setAddingCandidate(key); setError("");
-    try {
-      await recurringApi.create({
+      invalidate();
+    },
+  });
+  const addCandidateMutation = useMutation({
+    mutationFn: (c: Candidate) =>
+      recurringApi.create({
         name: c.name, amount: c.amount, currency: c.currency, frequency: c.frequency,
         movement_type: c.movement_type, next_date: c.next_date, active: true,
-      });
-      await Promise.all([load(), loadCandidates()]);
-    } catch { setError("No se pudo agregar el recurrente detectado."); }
-    finally { setAddingCandidate(null); }
+      }),
+    onSettled: () => { setAddingCandidate(null); },
+    onSuccess: () => { invalidate(); },
+  });
+
+  const busy = detectMutation.isPending;
+  const error = recurringQuery.isError
+    ? "No se pudieron cargar los recurrentes."
+    : saveMutation.isError
+      ? "No se pudo guardar el recurrente."
+      : toggleMutation.isError
+        ? "No se pudo actualizar."
+        : removeMutation.isError
+          ? "No se pudo eliminar."
+          : detectMutation.isError
+            ? "No se pudo detectar recurrentes."
+            : addCandidateMutation.isError
+              ? "No se pudo agregar el recurrente detectado."
+              : "";
+
+  function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    saveMutation.mutate({ ...form, category_id: form.category_id || null, next_date: form.next_date || null });
+  }
+  function toggleActive(item: Recurring) { toggleMutation.mutate(item); }
+  function remove(id: string) { removeMutation.mutate(id); }
+  function detect() { setInfo(""); detectMutation.mutate(); }
+  function addCandidate(c: Candidate) {
+    const key = `${normName(c.name)}|${c.amount}|${c.frequency}`;
+    setAddingCandidate(key);
+    addCandidateMutation.mutate(c);
   }
 
   // ── Derived data ──
@@ -222,7 +251,7 @@ export default function RecurringPage() {
           </div>
         </div>
         <div className="actions">
-          <button className="btn ghost" onClick={() => void detect()} disabled={busy}>{busy ? "Detectando…" : "¶ Detectar automático"}</button>
+          <button className="btn ghost" onClick={() => detect()} disabled={busy}>{busy ? "Detectando…" : "¶ Detectar automático"}</button>
           <button className="btn primary" onClick={startCreate}>+ Nueva suscripción</button>
         </div>
       </div>
@@ -263,7 +292,7 @@ export default function RecurringPage() {
                     </span>
                     <span className="chip mono" style={{ fontSize: 10 }}>{FREQ_LABELS[c.frequency] ?? c.frequency}</span>
                     <span className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>{c.occurrences}× visto</span>
-                    <button className="btn primary" style={{ padding: "4px 12px", fontSize: 12 }} disabled={adding} onClick={() => void addCandidate(c)}>
+                    <button className="btn primary" style={{ padding: "4px 12px", fontSize: 12 }} disabled={adding} onClick={() => addCandidate(c)}>
                       {adding ? "Agregando…" : "+ Agregar"}
                     </button>
                   </div>
@@ -456,8 +485,8 @@ export default function RecurringPage() {
               <button type="button" className="btn ghost" onClick={reset}>Cancelar</button>
               {editingId ? (
                 <>
-                  <button type="button" className="btn ghost" onClick={() => { const it = items.find((i) => i.id === editingId); if (it) void toggleActive(it); }}>{form.active ? "Pausar" : "Activar"}</button>
-                  <button type="button" className="btn danger" style={{ marginLeft: "auto" }} onClick={() => void remove(editingId)}>Eliminar</button>
+                  <button type="button" className="btn ghost" onClick={() => { const it = items.find((i) => i.id === editingId); if (it) toggleActive(it); }}>{form.active ? "Pausar" : "Activar"}</button>
+                  <button type="button" className="btn danger" style={{ marginLeft: "auto" }} onClick={() => remove(editingId)}>Eliminar</button>
                 </>
               ) : null}
             </div>

@@ -4,6 +4,7 @@ import { goalsApi } from "@/lib/api";
 import type { Goal, GoalContribution, GoalDepositPayload, GoalPayload } from "@/lib/api-types";
 import { asNumber, plain } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addMonths } from "date-fns";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -40,29 +41,41 @@ function monthlyRate(list: GoalContribution[]): number | null {
 
 export default function GoalsPage() {
   const { user } = useAuthStore();
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [contributions, setContributions] = useState<Record<string, GoalContribution[]>>({});
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<GoalPayload>(emptyForm);
   const [depositForms, setDepositForms] = useState<Record<string, GoalDepositPayload>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [openDeposit, setOpenDeposit] = useState<string | null>(null);
 
-  async function load() {
-    try {
+  const goalsQuery = useQuery({
+    queryKey: ["goals"],
+    queryFn: async () => {
       const goalList = (await goalsApi.list()).data;
-      setGoals(goalList);
-      const pairs = await Promise.all(goalList.map(async (goal) => [goal.id, (await goalsApi.contributions(goal.id)).data] as const));
-      setContributions(Object.fromEntries(pairs));
-      setDepositForms((current) => {
-        const next = { ...current };
-        for (const goal of goalList) if (!next[goal.id]) next[goal.id] = emptyDeposit;
-        return next;
-      });
-    } catch { setError("No se pudieron cargar las metas."); }
+      const pairs = await Promise.all(
+        goalList.map(async (goal) => [goal.id, (await goalsApi.contributions(goal.id)).data] as const),
+      );
+      return { goals: goalList, contributions: Object.fromEntries(pairs) as Record<string, GoalContribution[]> };
+    },
+    enabled: Boolean(user),
+  });
+
+  const goals = useMemo<Goal[]>(() => goalsQuery.data?.goals ?? [], [goalsQuery.data]);
+  const contributions = useMemo<Record<string, GoalContribution[]>>(() => goalsQuery.data?.contributions ?? {}, [goalsQuery.data]);
+
+  // Mantén un form de depósito por meta cuando aparecen nuevas metas.
+  useEffect(() => {
+    if (goals.length === 0) return;
+    setDepositForms((current) => {
+      const next = { ...current };
+      for (const goal of goals) if (!next[goal.id]) next[goal.id] = emptyDeposit;
+      return next;
+    });
+  }, [goals]);
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ["goals"] });
   }
-  useEffect(() => { if (user) void load(); }, [user]);
 
   function reset() { setForm(emptyForm); setEditingId(null); setShowForm(false); }
   function edit(goal: Goal) {
@@ -71,29 +84,45 @@ export default function GoalsPage() {
     setShowForm(true);
   }
   function startCreate() { setForm(emptyForm); setEditingId(null); setShowForm(true); }
-  async function save(event: FormEvent<HTMLFormElement>) {
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: GoalPayload) => (editingId ? goalsApi.update(editingId, payload) : goalsApi.create(payload)),
+    onSuccess: () => { reset(); invalidate(); },
+  });
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => goalsApi.remove(id),
+    onSuccess: () => { reset(); invalidate(); },
+  });
+  const depositMutation = useMutation({
+    mutationFn: ({ goalId, payload }: { goalId: string; payload: GoalDepositPayload }) => goalsApi.deposit(goalId, payload),
+    onSuccess: (_data, { goalId }) => {
+      setDepositForms((current) => ({ ...current, [goalId]: emptyDeposit }));
+      setOpenDeposit(null);
+      invalidate();
+    },
+  });
+
+  const error = goalsQuery.isError
+    ? "No se pudieron cargar las metas."
+    : saveMutation.isError
+      ? "No se pudo guardar la meta."
+      : removeMutation.isError
+        ? "No se pudo eliminar la meta."
+        : depositMutation.isError
+          ? "No se pudo registrar el aporte."
+          : "";
+
+  function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const payload: GoalPayload = { ...form, target_date: form.target_date || null };
-    try {
-      if (editingId) await goalsApi.update(editingId, payload);
-      else await goalsApi.create(payload);
-      reset(); await load();
-    } catch { setError("No se pudo guardar la meta."); }
+    saveMutation.mutate({ ...form, target_date: form.target_date || null });
   }
-  async function remove(id: string) {
-    try { await goalsApi.remove(id); reset(); await load(); } catch { setError("No se pudo eliminar la meta."); }
-  }
+  function remove(id: string) { removeMutation.mutate(id); }
   function setDeposit(goalId: string, changes: Partial<GoalDepositPayload>) {
     setDepositForms((current) => ({ ...current, [goalId]: { ...emptyDeposit, ...current[goalId], ...changes } }));
   }
-  async function deposit(goalId: string) {
+  function deposit(goalId: string) {
     const payload = depositForms[goalId] ?? emptyDeposit;
-    try {
-      await goalsApi.deposit(goalId, { ...payload, date: payload.date || null, note: payload.note || null });
-      setDepositForms((current) => ({ ...current, [goalId]: emptyDeposit }));
-      setOpenDeposit(null);
-      await load();
-    } catch { setError("No se pudo registrar el aporte."); }
+    depositMutation.mutate({ goalId, payload: { ...payload, date: payload.date || null, note: payload.note || null } });
   }
 
   // ── Derived KPIs ──
@@ -145,7 +174,7 @@ export default function GoalsPage() {
           <input className="input" value={depositForm.note ?? ""} onChange={(e) => setDeposit(goal.id, { note: e.target.value })} placeholder="Nota (opcional)" />
         </div>
         <div style={{ gridColumn: "span 2", display: "flex", gap: 10 }}>
-          <button className="btn primary" onClick={() => void deposit(goal.id)}>+ Aportar</button>
+          <button className="btn primary" onClick={() => deposit(goal.id)}>+ Aportar</button>
           <button className="btn ghost" onClick={() => setOpenDeposit(null)}>Cerrar</button>
         </div>
       </div>
@@ -410,7 +439,7 @@ export default function GoalsPage() {
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <button className="btn primary">Guardar</button>
               <button type="button" className="btn ghost" onClick={reset}>Cancelar</button>
-              {editingId ? <button type="button" className="btn danger" style={{ marginLeft: "auto" }} onClick={() => void remove(editingId)}>Eliminar</button> : null}
+              {editingId ? <button type="button" className="btn danger" style={{ marginLeft: "auto" }} onClick={() => remove(editingId)}>Eliminar</button> : null}
             </div>
           </form>
         </div>

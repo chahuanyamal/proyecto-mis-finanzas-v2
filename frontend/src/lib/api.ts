@@ -20,6 +20,10 @@ import type {
   CategoryRulePayload,
   Budget,
   BudgetPayload,
+  AiAskResponse,
+  AiConfig,
+  AiConfigUpdate,
+  AiTestResult,
   BudgetSuggestion,
   CashflowForecast,
   MonthlyInsights,
@@ -340,6 +344,12 @@ export const aiApi = {
     }),
   applyBulk: (suggestions: Array<{ transaction_id: string; suggested_category_id: string }>) =>
     api.post<{ updated: number }>("/v1/ai/categorize/apply-bulk", { suggestions }),
+  // Asistente conversacional (LLM configurable).
+  getConfig: () => api.get<AiConfig>("/v1/ai/config"),
+  updateConfig: (payload: AiConfigUpdate) => api.put<AiConfig>("/v1/ai/config", payload),
+  test: () => api.post<AiTestResult>("/v1/ai/test"),
+  ask: (question: string, currency = "CLP") =>
+    api.post<AiAskResponse>("/v1/ai/ask", { question, currency }),
 };
 
 export const debtApi = {
