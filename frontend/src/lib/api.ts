@@ -20,6 +20,11 @@ import type {
   CategoryRulePayload,
   Budget,
   BudgetPayload,
+  AiAskResponse,
+  AiConfig,
+  AiConfigUpdate,
+  AiTestResult,
+  Attachment,
   BudgetSuggestion,
   CashflowForecast,
   MonthlyInsights,
@@ -340,6 +345,12 @@ export const aiApi = {
     }),
   applyBulk: (suggestions: Array<{ transaction_id: string; suggested_category_id: string }>) =>
     api.post<{ updated: number }>("/v1/ai/categorize/apply-bulk", { suggestions }),
+  // Asistente conversacional (LLM configurable).
+  getConfig: () => api.get<AiConfig>("/v1/ai/config"),
+  updateConfig: (payload: AiConfigUpdate) => api.put<AiConfig>("/v1/ai/config", payload),
+  test: () => api.post<AiTestResult>("/v1/ai/test"),
+  ask: (question: string, currency = "CLP") =>
+    api.post<AiAskResponse>("/v1/ai/ask", { question, currency }),
 };
 
 export const debtApi = {
@@ -401,6 +412,19 @@ export const statementsApi = {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
+};
+
+export const attachmentsApi = {
+  list: (transactionId: string) => api.get<Attachment[]>(`/v1/transactions/${transactionId}/attachments`),
+  upload: (transactionId: string, file: File) => {
+    const data = new FormData();
+    data.append("file", file);
+    return api.post<Attachment>(`/v1/transactions/${transactionId}/attachments`, data, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  downloadUrl: (id: string) => `/api/v1/attachments/${id}/download`,
+  remove: (id: string) => api.delete(`/v1/attachments/${id}`),
 };
 
 export default api;

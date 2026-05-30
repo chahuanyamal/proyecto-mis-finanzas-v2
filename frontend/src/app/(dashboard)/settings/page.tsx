@@ -1,7 +1,7 @@
 "use client";
 
-import { authApi, settingsApi } from "@/lib/api";
-import type { Settings } from "@/lib/api-types";
+import { aiApi, authApi, settingsApi } from "@/lib/api";
+import type { AiConfig, Settings } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { useThemeStore } from "@/stores/theme";
 import { FormEvent, useEffect, useState } from "react";
@@ -50,8 +50,17 @@ export default function SettingsPage() {
 
   // Local-only UI state (template parity for sections without backend)
   const [sections, setSections] = useState({ resumen: true, movimientos: true, planificacion: true, taxonomia: true });
-  const [aiProvider, setAiProvider] = useState("Ollama Cloud");
   const [aiBehavior, setAiBehavior] = useState({ revisar: true, autoaplicar: false, resumen: true });
+
+  // AI Assistant config (backend-wired)
+  const [aiConfig, setAiConfig] = useState<AiConfig | null>(null);
+  const [aiProvider, setAiProvider] = useState("ollama");
+  const [aiBaseUrl, setAiBaseUrl] = useState("");
+  const [aiModel, setAiModel] = useState("");
+  const [aiToken, setAiToken] = useState("");
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiBanner, setAiBanner] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const [reportYear, setReportYear] = useState("2026 · YTD");
   const [concilRange, setConcilRange] = useState("12 meses");
   const [userFilter, setUserFilter] = useState("Todos · 1");
@@ -69,6 +78,51 @@ export default function SettingsPage() {
       }
     }).catch(() => setError("No se pudieron cargar los ajustes."));
   }, [user, setThemeStore]);
+
+  function applyAiConfig(c: AiConfig) {
+    setAiConfig(c);
+    setAiProvider(c.provider || "ollama");
+    setAiBaseUrl(c.base_url || "");
+    setAiModel(c.model || "");
+    setAiToken("");
+  }
+
+  useEffect(() => {
+    if (!user) return;
+    aiApi.getConfig().then((r) => applyAiConfig(r.data)).catch(() => undefined);
+  }, [user]);
+
+  async function saveAiConfig() {
+    setAiSaving(true);
+    setAiBanner(null);
+    try {
+      const r = await aiApi.updateConfig({
+        provider: aiProvider,
+        base_url: aiBaseUrl,
+        model: aiModel,
+        token: aiToken ? aiToken : null,
+      });
+      applyAiConfig(r.data);
+      setAiBanner({ type: "ok", msg: "Configuración guardada." });
+    } catch {
+      setAiBanner({ type: "err", msg: "No se pudo guardar la configuración." });
+    } finally {
+      setAiSaving(false);
+    }
+  }
+
+  async function testAiConnection() {
+    setAiTesting(true);
+    setAiBanner(null);
+    try {
+      const r = await aiApi.test();
+      setAiBanner({ type: r.data.ok ? "ok" : "err", msg: r.data.detail });
+    } catch {
+      setAiBanner({ type: "err", msg: "No se pudo probar la conexión." });
+    } finally {
+      setAiTesting(false);
+    }
+  }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -739,7 +793,7 @@ export default function SettingsPage() {
               <div className="mark green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /><circle cx="12" cy="12" r="3" /></svg></div>
               <h2>AI · Cloud LLM</h2>
               <span className="sub">categorización + revisión de cartolas con un proveedor cloud</span>
-              <span className="status ok">● Token OK</span>
+              <span className={`status ${aiConfig?.enabled ? "ok" : "err"}`}>● {aiConfig?.enabled ? "Activo" : "Inactivo"}</span>
             </div>
             <p style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 14, lineHeight: 1.6 }}>Conectá un proveedor cloud — auto-categoriza transacciones y revisa el cuadre de cartolas. <span style={{ fontFamily: "'Instrument Serif',serif", fontStyle: "italic", color: "var(--text-3)" }}>Tus datos viajan solo al endpoint que definas.</span></p>
           </div>
@@ -751,8 +805,13 @@ export default function SettingsPage() {
               <span className="sub">elegí el endpoint</span>
             </div>
             <div className="provider-row">
-              {["Ollama Cloud", "NVIDIA Build", "OpenRouter", "Custom (OpenAI-compatible)"].map((p) => (
-                <button type="button" key={p} className={`provider ${aiProvider === p ? "on" : ""}`} onClick={() => setAiProvider(p)}>{p}</button>
+              {[
+                { key: "ollama", label: "Ollama Cloud" },
+                { key: "nvidia", label: "NVIDIA Build" },
+                { key: "openrouter", label: "OpenRouter" },
+                { key: "custom", label: "Custom (OpenAI-compatible)" },
+              ].map((p) => (
+                <button type="button" key={p.key} className={`provider ${aiProvider === p.key ? "on" : ""}`} onClick={() => setAiProvider(p.key)}>{p.label}</button>
               ))}
             </div>
             <p style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "'Geist Mono',monospace", letterSpacing: "0.04em" }}>API: OLLAMA NATIVE (/API/TAGS · /API/GENERATE)</p>
@@ -767,11 +826,11 @@ export default function SettingsPage() {
             <div className="form-grid">
               <div className="field">
                 <label>Base URL</label>
-                <input className="input" defaultValue="https://ollama.com/api" />
+                <input className="input" value={aiBaseUrl} onChange={(e) => setAiBaseUrl(e.target.value)} placeholder="https://ollama.com/api" />
               </div>
               <div className="field">
-                <label>Bearer token <span style={{ fontFamily: "'Instrument Serif',serif", fontStyle: "italic", color: "var(--text-3)", textTransform: "none", letterSpacing: 0, fontSize: 12 }}>— definido · vacíalo para borrar</span></label>
-                <input className="input" type="password" defaultValue="••••••••" />
+                <label>Bearer token <span style={{ fontFamily: "'Instrument Serif',serif", fontStyle: "italic", color: "var(--text-3)", textTransform: "none", letterSpacing: 0, fontSize: 12 }}>— déjalo vacío para conservar · vacíalo para borrar</span></label>
+                <input className="input" type="password" value={aiToken} onChange={(e) => setAiToken(e.target.value)} placeholder={aiConfig?.has_token ? "•••• guardado" : "sin token"} />
               </div>
             </div>
             <p style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "'Geist Mono',monospace", marginTop: 8, fontStyle: "italic" }}>Solo el host — no incluyas /api al final.</p>
@@ -786,7 +845,7 @@ export default function SettingsPage() {
             </div>
             <div className="field">
               <label>Modelo (manual)</label>
-              <input className="input" defaultValue="deepseek-v4-flash" />
+              <input className="input" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="deepseek-v4-flash" />
             </div>
             <p style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "'Geist Mono',monospace", marginTop: 8, fontStyle: "italic" }}>Ingresá URL y token, después apretá Fetch models para listar disponibles.</p>
           </div>
@@ -826,9 +885,17 @@ export default function SettingsPage() {
               <div className={`toggle ${aiBehavior.resumen ? "on" : ""}`} onClick={() => setAiBehavior((p) => ({ ...p, resumen: !p.resumen }))}></div>
             </div>
 
+            {aiBanner ? (
+              <div className={`insight ${aiBanner.type === "err" ? "err" : ""}`} style={{ marginTop: 18 }}>
+                <div className="insight-mark">{aiBanner.type === "err" ? "!" : "✓"}</div>
+                <div className="insight-body"><div className="txt">{aiBanner.msg}</div></div>
+                <div />
+              </div>
+            ) : null}
+
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
-              <button type="button" className="btn ghost">↻ Probar conexión</button>
-              <button type="button" className="btn primary">💾 Guardar configuración</button>
+              <button type="button" className="btn ghost" onClick={() => void testAiConnection()} disabled={aiTesting || aiSaving}>↻ {aiTesting ? "Probando…" : "Probar conexión"}</button>
+              <button type="button" className="btn primary" onClick={() => void saveAiConfig()} disabled={aiSaving || aiTesting}>💾 {aiSaving ? "Guardando…" : "Guardar configuración"}</button>
             </div>
           </div>
         </>

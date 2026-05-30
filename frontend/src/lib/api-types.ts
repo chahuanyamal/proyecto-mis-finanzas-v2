@@ -813,3 +813,39 @@ export interface BulkUploadResult {
     message?: string;
   }>;
 }
+
+export interface AiConfig {
+  provider: string;
+  base_url: string;
+  model: string;
+  has_token: boolean;
+  enabled: boolean;
+}
+
+export interface AiConfigUpdate {
+  provider: string;
+  base_url: string;
+  model: string;
+  token?: string | null;
+}
+
+export interface AiTestResult {
+  ok: boolean;
+  detail: string;
+  model: string | null;
+}
+
+export interface AiAskResponse {
+  answer: string;
+  model: string;
+  context_used: string[];
+}
+
+export interface Attachment {
+  id: string;
+  transaction_id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  created_at: string;
+}

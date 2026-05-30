@@ -1,15 +1,21 @@
 "use client";
 
-import { accountsApi, categoriesApi, tagsApi, transactionsApi } from "@/lib/api";
+import { accountsApi, attachmentsApi, categoriesApi, tagsApi, transactionsApi } from "@/lib/api";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import type { Account, AnomalyItem, Category, SplitPayload, Tag, Transaction, TransactionFilters, TransactionHistoryEvent, TransactionPayload, TransactionSummary } from "@/lib/api-types";
+import type { Account, AnomalyItem, Attachment, Category, SplitPayload, Tag, Transaction, TransactionFilters, TransactionHistoryEvent, TransactionPayload, TransactionSummary } from "@/lib/api-types";
 import { chipColor, dayLabel, formatMoney, plain, today } from "@/lib/format";
 import { loadSavedViews, newViewId, persistSavedViews, type SavedView } from "@/lib/savedFilters";
 import { useAuthStore } from "@/stores/auth";
-import { Download, Loader2, Save, Sparkles, Trash2 } from "lucide-react";
+import { toast } from "@/stores/toast";
+import { Download, ExternalLink, FileText, ImageIcon, Loader2, Paperclip, Save, Sparkles, Trash2 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 function iso(d: Date): string { return d.toISOString().slice(0, 10); }
+function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
 const emptyForm: TransactionPayload = { account_id: "", category_id: null, date: today(), description: "", amount: "0", currency: "CLP", movement_type: "expense", notes: "" };
 
 const PAGE_SIZE = 100;
@@ -72,6 +78,10 @@ export default function TransactionsPage() {
   const [savedViews, setSavedViews] = useState<SavedFilterView[]>([]);
   const [namingView, setNamingView] = useState(false);
   const [viewName, setViewName] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
 
   useEffect(() => { setSavedViews(loadSavedViews<FilterState>()); }, []);
 
@@ -136,6 +146,41 @@ export default function TransactionsPage() {
     return () => { active = false; };
   }, [editing]);
 
+  const loadAttachments = useCallback(async (txId: string) => {
+    setAttachmentsLoading(true);
+    try { const { data } = await attachmentsApi.list(txId); setAttachments(data); }
+    catch { setAttachments([]); }
+    finally { setAttachmentsLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (!editing) { setAttachments([]); setAttachmentFile(null); return; }
+    void loadAttachments(editing.id);
+    setAttachmentFile(null);
+  }, [editing, loadAttachments]);
+
+  async function uploadAttachment() {
+    if (!editing || !attachmentFile) return;
+    setUploading(true); setError(""); setInfo("");
+    try {
+      await attachmentsApi.upload(editing.id, attachmentFile);
+      setAttachmentFile(null);
+      setInfo("Comprobante adjuntado.");
+      await loadAttachments(editing.id);
+    } catch (e) {
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      if (status === 415) setError("Formato no permitido. Solo imágenes o PDF.");
+      else if (status === 413) setError("El archivo supera el máximo de 10MB.");
+      else setError("No se pudo adjuntar el comprobante.");
+    } finally { setUploading(false); }
+  }
+  async function removeAttachment(id: string) {
+    if (!editing) return;
+    setError(""); setInfo("");
+    try { await attachmentsApi.remove(id); await loadAttachments(editing.id); }
+    catch { setError("No se pudo eliminar el comprobante."); }
+  }
+
   function reset() { setForm({ ...emptyForm, account_id: accounts[0]?.id ?? "" }); setEditing(null); setExtra({ is_internal_transfer: false, is_duplicate: false, is_flagged: false, flag_reason: "" }); setTagIds([]); setSplits([]); }
   function edit(tx: Transaction) {
     setEditing(tx);
@@ -169,18 +214,20 @@ export default function TransactionsPage() {
   }
   async function autoCategorize() {
     setBusy(true); setInfo(""); setError("");
-    try { const { data } = await transactionsApi.autoCategorize(); setInfo(`Auto-categorización: ${data.updated} movimiento(s) actualizados.`); await loadTransactions(); }
-    catch { setError("No se pudo auto-categorizar."); } finally { setBusy(false); }
+    try { const { data } = await transactionsApi.autoCategorize(); setInfo(`Auto-categorización: ${data.updated} movimiento(s) actualizados.`); toast.success(`Auto-categorización: ${data.updated} movimiento(s) actualizados.`); await loadTransactions(); }
+    catch { setError("No se pudo auto-categorizar."); toast.error("No se pudo auto-categorizar."); } finally { setBusy(false); }
   }
   async function detectTransfers() {
     setBusy(true); setInfo(""); setError("");
     try {
       const { data } = await transactionsApi.detectTransfers();
-      setInfo(data.pairs > 0
+      const msg = data.pairs > 0
         ? `Transferencias internas: ${data.pairs} par(es) emparejado(s) (${data.transactions} movimientos).`
-        : "Transferencias internas: no se encontraron nuevos pares.");
+        : "Transferencias internas: no se encontraron nuevos pares.";
+      setInfo(msg);
+      toast.success(msg);
       await loadTransactions();
-    } catch { setError("No se pudo emparejar transferencias."); } finally { setBusy(false); }
+    } catch { setError("No se pudo emparejar transferencias."); toast.error("No se pudo emparejar transferencias."); } finally { setBusy(false); }
   }
   function exportFile(kind: "csv" | "excel") {
     const params = new URLSearchParams();
@@ -643,6 +690,53 @@ export default function TransactionsPage() {
                   </div>
                 ) : (
                   <p className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>Sin eventos registrados.</p>
+                )}
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <h4 style={{ marginBottom: 8 }}>Comprobantes</h4>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => { setAttachmentFile(e.target.files?.[0] ?? null); setError(""); }}
+                    className="input"
+                    style={{ flex: 1, minWidth: 200, padding: "6px 8px", fontSize: 12 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void uploadAttachment()}
+                    disabled={!attachmentFile || uploading}
+                    className="btn ghost"
+                  >
+                    {uploading ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />} Adjuntar
+                  </button>
+                </div>
+                {attachmentsLoading ? (
+                  <p className="mono" style={{ fontSize: 11, color: "var(--text-3)", display: "flex", alignItems: "center", gap: 8 }}><Loader2 className="animate-spin" size={13} /> Cargando…</p>
+                ) : attachments.length ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {attachments.map((att) => {
+                      const isPdf = att.content_type === "application/pdf" || att.filename.toLowerCase().endsWith(".pdf");
+                      return (
+                        <div key={att.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "var(--bg-3)", border: "1px solid var(--line-2)", borderRadius: 8 }}>
+                          <span style={{ display: "grid", placeItems: "center", color: isPdf ? "var(--rust)" : "var(--blue)", flexShrink: 0 }}>
+                            {isPdf ? <FileText size={15} /> : <ImageIcon size={15} />}
+                          </span>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{att.filename}</div>
+                            <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{formatSize(att.size)}</div>
+                          </div>
+                          <a href={attachmentsApi.downloadUrl(att.id)} target="_blank" rel="noopener noreferrer" className="btn ghost" style={{ textDecoration: "none" }}>
+                            <ExternalLink size={13} /> Ver
+                          </a>
+                          <ConfirmButton title="Eliminar comprobante" description="Este comprobante será eliminado definitivamente." confirmLabel="Eliminar" onConfirm={() => removeAttachment(att.id)} className="btn danger"><Trash2 size={13} /></ConfirmButton>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>Sin comprobantes adjuntos.</p>
                 )}
               </div>
             </div>
