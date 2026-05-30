@@ -6,9 +6,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { CommandPalette } from "./CommandPalette";
 import { ThemeApplier } from "./ThemeApplier";
+import { PWARegister } from "./PWARegister";
 import { BOVEDA_NAV, BOVEDA_NAV_FLAT, isActive, openCommandPalette } from "./nav";
 import { useNavCounts } from "./useNavCounts";
 import { PERIOD_OPTIONS, usePeriodStore } from "@/stores/period";
+import { useThemeStore } from "@/stores/theme";
 
 const MONTH_LABEL = new Intl.DateTimeFormat("es-CL", { month: "short", year: "2-digit" })
   .format(new Date())
@@ -26,6 +28,7 @@ export function BovedaShell({ children }: { children: ReactNode }) {
   const currentGroup = BOVEDA_NAV.find((g) => g.items.some((i) => isActive(pathname, i.href)));
   const counts = useNavCounts(Boolean(user));
   const { period, currency, setPeriod, toggleCurrency } = usePeriodStore();
+  const { theme, toggleTheme } = useThemeStore();
   const [navOpen, setNavOpen] = useState(false);
   const fmtCount = (n: number | undefined) =>
     n === undefined ? null : n > 999 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
@@ -153,6 +156,24 @@ export function BovedaShell({ children }: { children: ReactNode }) {
             <button type="button" className="pill" onClick={toggleCurrency} aria-label="Moneda">
               {currency} ▾
             </button>
+            <button
+              type="button"
+              className="pill"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+              title={theme === "dark" ? "Tema claro" : "Tema oscuro"}
+            >
+              {theme === "dark" ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+                </svg>
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              )}
+            </button>
             <button type="button" onClick={handleLogout} className="btn ghost">
               Salir
             </button>
@@ -165,6 +186,7 @@ export function BovedaShell({ children }: { children: ReactNode }) {
 
       <CommandPalette />
       <ThemeApplier />
+      <PWARegister />
     </div>
   );
 }

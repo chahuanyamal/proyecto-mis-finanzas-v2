@@ -4,7 +4,8 @@ import { reconciliationApi } from "@/lib/api";
 import type { ReconciliationSummary } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
 import { usePeriodStore } from "@/stores/period";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 function money(value: string, currency: string) {
   const n = Number(value);
@@ -17,16 +18,20 @@ export default function ReconciliationPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [tolerance, setTolerance] = useState("1");
-  const [data, setData] = useState<ReconciliationSummary | null>(null);
-  const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (user) {
-      reconciliationApi.summary({ currency, tolerance, start_date: startDate || undefined, end_date: endDate || undefined })
-        .then((r) => setData(r.data))
-        .catch(() => setError("No se pudo cargar reconciliación."));
-    }
-  }, [currency, endDate, startDate, tolerance, user]);
+  const summaryQuery = useQuery({
+    queryKey: ["reconciliation", "summary", currency, tolerance, startDate, endDate],
+    queryFn: async () =>
+      (await reconciliationApi.summary({
+        currency,
+        tolerance,
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
+      })).data,
+    enabled: Boolean(user),
+  });
+  const data: ReconciliationSummary | null = summaryQuery.data ?? null;
+  const error = summaryQuery.isError ? "No se pudo cargar reconciliación." : "";
 
   const cols = "1fr 150px 150px 130px 130px 90px";
 
