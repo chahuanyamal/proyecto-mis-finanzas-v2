@@ -1,7 +1,7 @@
 "use client";
 
 import { dashboardApi } from "@/lib/api";
-import type { DashboardSummary, DashboardTrends } from "@/lib/api-types";
+import type { CashflowForecast, DashboardSummary, DashboardTrends } from "@/lib/api-types";
 import { asNumber, formatMoney, plain, formatPercent, monthDayLabel, monthShortUpper, catColor } from "@/lib/format";
 import { usePeriodStore } from "@/stores/period";
 import { useRouter } from "next/navigation";
@@ -14,6 +14,7 @@ export default function DashboardPage() {
   const { period, currency } = usePeriodStore();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [trends, setTrends] = useState<DashboardTrends | null>(null);
+  const [forecast, setForecast] = useState<CashflowForecast | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,13 +24,15 @@ export default function DashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [summaryResponse, trendsResponse] = await Promise.all([
+        const [summaryResponse, trendsResponse, forecastResponse] = await Promise.all([
           dashboardApi.summary(period, currency),
           dashboardApi.trends(12, currency),
+          dashboardApi.forecast(90, currency),
         ]);
         if (!cancelled) {
           setSummary(summaryResponse.data);
           setTrends(trendsResponse.data);
+          setForecast(forecastResponse.data);
         }
       } catch {
         if (!cancelled) setError("No se pudo cargar el tablero.");
@@ -76,6 +79,22 @@ export default function DashboardPage() {
       .map((v, i) => `${(i * stepX).toFixed(1)},${(28 - ((v - mn) / span) * 24).toFixed(1)}`)
       .join(" ");
   };
+
+  // ── Forecast chart geometry ──────────────────────────────────────────
+  const fcPoints = forecast?.points ?? [];
+  const fcLowest = asNumber(forecast?.lowest_balance);
+  const fcW = 600;
+  const fcH = 180;
+  const fcPad = 6;
+  const fcVals = fcPoints.map((p) => asNumber(p.balance));
+  const fcMax = fcVals.length ? Math.max(...fcVals, 0) : 1;
+  const fcMin = fcVals.length ? Math.min(...fcVals, 0) : 0;
+  const fcSpan = fcMax - fcMin || 1;
+  const fcY = (v: number) => fcPad + (1 - (v - fcMin) / fcSpan) * (fcH - fcPad * 2);
+  const fcX = (i: number) => (fcPoints.length > 1 ? (i / (fcPoints.length - 1)) * fcW : 0);
+  const fcLine = fcPoints.map((p, i) => `${i === 0 ? "M" : "L"}${fcX(i).toFixed(1)},${fcY(asNumber(p.balance)).toFixed(1)}`).join(" ");
+  const fcArea = fcPoints.length > 1 ? `${fcLine} L${fcW},${fcH - fcPad} L0,${fcH - fcPad} Z` : "";
+  const fcZeroY = fcMin < 0 ? fcY(0) : null;
 
   return (
     <div className="content dash-section">
@@ -346,6 +365,79 @@ export default function DashboardPage() {
             ) : null}
           </div>
         </div>
+      </section>
+
+      {/* Proyección de saldo */}
+      <section className="panel" style={{ marginBottom: 24 }}>
+        <div className="panel-head">
+          <div>
+            <h3>Proyección de saldo · 90 días</h3>
+            <div className="mono" style={{ marginTop: 8, fontSize: 11, color: "var(--text-3)" }}>
+              estimación según recurrentes y neto diario promedio
+            </div>
+          </div>
+          <span className="meta">{currency}</span>
+        </div>
+
+        {/* KPIs */}
+        <div className="strip" style={{ gridTemplateColumns: "1fr 1fr 1fr", marginBottom: 18 }}>
+          <div className="kpi" style={{ padding: "16px 18px" }}>
+            <div className="lbl"><span className="sw" />Saldo proyectado · 90d</div>
+            <div className="val">
+              <span className="cu">{currency}</span>
+              {forecast ? plain(forecast.end_balance, currency) : "—"}
+            </div>
+          </div>
+          <div className="kpi r" style={{ padding: "16px 18px" }}>
+            <div className="lbl"><span className="sw" />Saldo mínimo</div>
+            <div className="val" style={{ color: fcLowest < 0 ? "var(--rust)" : undefined }}>
+              {forecast ? formatMoney(forecast.lowest_balance, currency) : "—"}
+            </div>
+            <div className="delta">{forecast?.lowest_date ? monthDayLabel(forecast.lowest_date) : "—"}</div>
+          </div>
+          <div className="kpi g" style={{ padding: "16px 18px" }}>
+            <div className="lbl"><span className="sw" />Neto diario promedio</div>
+            <div className="val">{forecast ? formatMoney(forecast.daily_net_avg, currency) : "—"}</div>
+          </div>
+        </div>
+
+        {fcLowest < 0 && forecast ? (
+          <div className="insight err" style={{ padding: "16px 20px", marginBottom: 18 }}>
+            <div className="insight-mark">!</div>
+            <div className="insight-body">
+              <div className="txt">Riesgo de saldo negativo el {monthDayLabel(forecast.lowest_date)}</div>
+            </div>
+            <span />
+          </div>
+        ) : null}
+
+        <div style={{ position: "relative", height: fcH }}>
+          <svg
+            viewBox={`0 0 ${fcW} ${fcH}`}
+            preserveAspectRatio="none"
+            style={{ width: "100%", height: "100%", display: "block", overflow: "visible" }}
+          >
+            <defs>
+              <linearGradient id="fcGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#5EE9B5" stopOpacity="0.32" />
+                <stop offset="100%" stopColor="#5EE9B5" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {fcArea ? <path d={fcArea} fill="url(#fcGrad)" /> : null}
+            {fcZeroY !== null ? (
+              <line x1="0" y1={fcZeroY} x2={fcW} y2={fcZeroY} stroke="#E87A5B" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />
+            ) : null}
+            {fcLine ? <path d={fcLine} fill="none" stroke="#5EE9B5" strokeWidth="1.6" /> : null}
+          </svg>
+        </div>
+        {fcPoints.length > 0 ? (
+          <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-3)", marginTop: 8 }}>
+            <span>{monthDayLabel(fcPoints[0].date)}</span>
+            <span>{monthDayLabel(fcPoints[fcPoints.length - 1].date)}</span>
+          </div>
+        ) : !isLoading ? (
+          <p className="mono text-[12px]" style={{ color: "var(--text-3)" }}>Sin datos de proyección.</p>
+        ) : null}
       </section>
 
       {/* Últimos movimientos */}

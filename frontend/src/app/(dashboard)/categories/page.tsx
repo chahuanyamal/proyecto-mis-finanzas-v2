@@ -5,8 +5,9 @@ import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Category, CategoryPayload } from "@/lib/api-types";
 import { initials } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
 const emptyForm: CategoryPayload = { name: "", parent_id: null, color: "#5EE9B5", icon: "tag" };
 
@@ -14,31 +15,25 @@ const SWATCHES = ["#5EE9B5", "#E6B85C", "#E87A5B", "#B49CFF", "#7AB0FF", "#FF6B9
 
 export default function CategoriesPage() {
   const { user } = useAuthStore();
-  const [categories, setCategories] = useState<Category[]>([]);
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<CategoryPayload>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<"all" | "mine" | "system">("all");
 
-  async function loadData() {
-    setIsLoading(true);
-    setError("");
-    try {
-      const response = await categoriesApi.list();
-      setCategories(response.data);
-    } catch {
-      setError("No se pudieron cargar las categorías.");
-    } finally {
-      setIsLoading(false);
-    }
-  }
+  const categoriesQuery = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => (await categoriesApi.list()).data,
+    enabled: Boolean(user),
+  });
+  const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
+  const isLoading = categoriesQuery.isPending;
 
-  useEffect(() => {
-    if (user) void loadData();
-  }, [user]);
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ["categories"] });
+    queryClient.invalidateQueries({ queryKey: ["nav-count", "categories"] });
+  }
 
   function resetForm() {
     setForm(emptyForm);
@@ -58,26 +53,36 @@ export default function CategoriesPage() {
     setShowForm(true);
   }
 
-  async function save(event: FormEvent<HTMLFormElement>) {
+  const saveMutation = useMutation({
+    mutationFn: (payload: CategoryPayload) =>
+      editingId ? categoriesApi.update(editingId, payload) : categoriesApi.create(payload),
+    onSuccess: () => {
+      resetForm();
+      invalidate();
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => categoriesApi.remove(id),
+    onSuccess: () => invalidate(),
+  });
+
+  const error = saveMutation.isError
+    ? "No se pudo guardar la categoría."
+    : removeMutation.isError
+      ? "No se pudo eliminar. Puede estar en uso por transacciones o reglas."
+      : categoriesQuery.isError
+        ? "No se pudieron cargar las categorías."
+        : "";
+
+  function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const payload = { ...form, parent_id: form.parent_id || null, color: form.color || null, icon: form.icon || null };
-    try {
-      if (editingId) await categoriesApi.update(editingId, payload);
-      else await categoriesApi.create(payload);
-      resetForm();
-      await loadData();
-    } catch {
-      setError("No se pudo guardar la categoría.");
-    }
+    saveMutation.mutate(payload);
   }
 
-  async function remove(id: string) {
-    try {
-      await categoriesApi.remove(id);
-      await loadData();
-    } catch {
-      setError("No se pudo eliminar. Puede estar en uso por transacciones o reglas.");
-    }
+  function remove(id: string) {
+    removeMutation.mutate(id);
   }
 
   const visible = useMemo(() => {

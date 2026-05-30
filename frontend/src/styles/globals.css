@@ -62,6 +62,41 @@
   --bb-cyan: var(--blue);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Cuaderno · Claro
+   Tema claro cálido tipo papel. Fondo crema, texto tinta, mismo acento mint
+   (oscurecido para contraste sobre claro) y semánticos gold/rust/violet/blue
+   reajustados para legibilidad sobre fondos claros. Solo redefine variables;
+   toda la geometría, tipografía y layout se heredan del :root oscuro.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root[data-theme="light"] {
+  /* Backgrounds — papel cálido, capas sutiles */
+  --bg: #f7f4ec;
+  --bg-2: #ffffff;
+  --bg-3: #efeadd;
+  --bg-4: #e6e0d0;
+
+  /* Lines — tinta tenue */
+  --line: rgba(40, 34, 22, 0.12);
+  --line-2: rgba(40, 34, 22, 0.07);
+  --line-3: rgba(40, 34, 22, 0.18);
+
+  /* Text — tinta sobre papel */
+  --text: #211d16;
+  --text-2: #4a4438;
+  --text-3: #7d7666;
+  --text-4: #a8a294;
+
+  /* Accents — mint oscurecido + semánticos con contraste sobre claro */
+  --acc: #129e74;
+  --acc-2: #0e8a64;
+  --gold: #a9791a;
+  --rust: #c2543a;
+  --bad: #cc3b2c;
+  --violet: #7a5fd6;
+  --blue: #2f6fc9;
+}
+
 html {
   background-color: var(--bg);
   color: var(--text);
@@ -70,12 +105,15 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  /* Transición suave al conmutar tema (anulada por prefers-reduced-motion). */
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 body {
   min-height: 100vh;
   background-color: var(--bg);
   color: var(--text);
+  transition: background-color 0.2s ease, color 0.2s ease;
   font-family: inherit;
   font-size: 13px;
   font-weight: 400;

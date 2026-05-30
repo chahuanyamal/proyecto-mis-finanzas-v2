@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { CommandPalette } from "./CommandPalette";
+import { ThemeApplier } from "./ThemeApplier";
 import { BOVEDA_NAV, BOVEDA_NAV_FLAT, isActive, openCommandPalette } from "./nav";
 import { useNavCounts } from "./useNavCounts";
 import { PERIOD_OPTIONS, usePeriodStore } from "@/stores/period";
@@ -163,6 +164,7 @@ export function BovedaShell({ children }: { children: ReactNode }) {
       </main>
 
       <CommandPalette />
+      <ThemeApplier />
     </div>
   );
 }

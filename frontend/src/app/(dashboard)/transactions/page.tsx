@@ -4,6 +4,7 @@ import { accountsApi, categoriesApi, tagsApi, transactionsApi } from "@/lib/api"
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Account, AnomalyItem, Category, SplitPayload, Tag, Transaction, TransactionFilters, TransactionHistoryEvent, TransactionPayload, TransactionSummary } from "@/lib/api-types";
 import { chipColor, dayLabel, formatMoney, plain, today } from "@/lib/format";
+import { loadSavedViews, newViewId, persistSavedViews, type SavedView } from "@/lib/savedFilters";
 import { useAuthStore } from "@/stores/auth";
 import { Download, Loader2, Save, Sparkles, Trash2 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -24,7 +25,25 @@ const PRESETS: { key: string; label: string; range: () => { start: string; end: 
   { key: "all", label: "Todo", range: () => ({ start: "", end: "" }) },
 ];
 
+type SavedFilterView = SavedView<FilterState>;
 
+// Vistas inteligentes predefinidas (no borrables), construidas con los campos de filtro reales.
+const BUILTIN_VIEWS: { id: string; name: string; build: () => FilterState }[] = [
+  {
+    id: "builtin-uncategorized",
+    name: "Sin categoría",
+    build: () => ({ ...emptyFilters, flow: "expense" }),
+  },
+  {
+    id: "builtin-month",
+    name: "Este mes",
+    build: () => { const n = new Date(); return { ...emptyFilters, start_date: iso(new Date(n.getFullYear(), n.getMonth(), 1)), end_date: today() }; },
+  },
+];
+
+function sameFilters(a: FilterState, b: FilterState): boolean {
+  return a.account_id === b.account_id && a.category_id === b.category_id && a.start_date === b.start_date && a.end_date === b.end_date && a.search.trim() === b.search.trim() && a.flow === b.flow;
+}
 
 export default function TransactionsPage() {
   const { user } = useAuthStore();
@@ -50,6 +69,26 @@ export default function TransactionsPage() {
   const [showAnomalies, setShowAnomalies] = useState(false);
   const [historyEvents, setHistoryEvents] = useState<TransactionHistoryEvent[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [savedViews, setSavedViews] = useState<SavedFilterView[]>([]);
+  const [namingView, setNamingView] = useState(false);
+  const [viewName, setViewName] = useState("");
+
+  useEffect(() => { setSavedViews(loadSavedViews<FilterState>()); }, []);
+
+  function applyView(f: FilterState) { setFilters({ ...emptyFilters, ...f }); }
+  function saveCurrentView() {
+    const name = viewName.trim();
+    if (!name) return;
+    setSavedViews((prev) => {
+      const next = [...prev, { id: newViewId(), name, filters: { ...filters } }];
+      persistSavedViews(next);
+      return next;
+    });
+    setViewName(""); setNamingView(false);
+  }
+  function removeView(id: string) {
+    setSavedViews((prev) => { const next = prev.filter((v) => v.id !== id); persistSavedViews(next); return next; });
+  }
 
   const baseParams = useCallback((): TransactionFilters => {
     const p: TransactionFilters = {};
@@ -325,6 +364,38 @@ export default function TransactionsPage() {
           <div className="val"><span className="cu">{primaryCurrency}</span>{plain(expense / dayCount, primaryCurrency)}</div>
           <div className="sub">{dayCount} días observados</div>
         </div>
+      </div>
+
+      {/* Vistas guardadas / filtros inteligentes */}
+      <div className="filters" style={{ marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
+        <span className="mono" style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)", alignSelf: "center" }}>Vistas</span>
+        {BUILTIN_VIEWS.map((v) => {
+          const f = v.build();
+          const active = sameFilters(filters, { ...emptyFilters, ...f });
+          return (
+            <span key={v.id} className={`chip${active ? " v" : ""}`} onClick={() => applyView(f)} style={{ cursor: "pointer", ...(active ? { background: "rgba(94,233,181,0.1)", color: "var(--acc)", borderColor: "rgba(94,233,181,0.3)" } : {}) }}>
+              <Sparkles size={11} />{v.name}
+            </span>
+          );
+        })}
+        {savedViews.map((v) => {
+          const active = sameFilters(filters, { ...emptyFilters, ...v.filters });
+          return (
+            <span key={v.id} className={`chip${active ? " v" : ""}`} onClick={() => applyView(v.filters)} style={{ cursor: "pointer", ...(active ? { background: "rgba(94,233,181,0.1)", color: "var(--acc)", borderColor: "rgba(94,233,181,0.3)" } : {}) }}>
+              {v.name}
+              <span className="x" onClick={(e) => { e.stopPropagation(); removeView(v.id); }} style={{ cursor: "pointer" }}>×</span>
+            </span>
+          );
+        })}
+        {namingView ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input className="filt" autoFocus placeholder="Nombre de la vista…" value={viewName} onChange={(e) => setViewName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveCurrentView(); if (e.key === "Escape") { setNamingView(false); setViewName(""); } }} style={{ minWidth: 160 }} />
+            <button onClick={saveCurrentView} disabled={!viewName.trim()} className="btn primary"><Save size={13} /> Guardar</button>
+            <button onClick={() => { setNamingView(false); setViewName(""); }} className="btn ghost">Cancelar</button>
+          </span>
+        ) : (
+          <button onClick={() => setNamingView(true)} className="btn ghost" style={{ marginLeft: "auto" }}><Save size={13} /> Guardar vista</button>
+        )}
       </div>
 
       {/* Filters */}

@@ -4,8 +4,9 @@ import { tagsApi } from "@/lib/api";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Tag, TagPayload } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
 const SWATCHES = ["#5EE9B5", "#E6B85C", "#E87A5B", "#B49CFF", "#7AB0FF", "#FF6B9D", "#807A6E"];
 
@@ -13,53 +14,62 @@ const emptyForm: TagPayload = { name: "", color: "#5EE9B5" };
 
 export default function TagsPage() {
   const { user } = useAuthStore();
-  const [tags, setTags] = useState<Tag[]>([]);
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<TagPayload>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [colorFilter, setColorFilter] = useState<"all" | "color" | "nocolor">("all");
 
-  async function loadData() {
-    setIsLoading(true);
-    try {
-      setTags((await tagsApi.list()).data);
-    } catch {
-      setError("No se pudieron cargar los tags.");
-    } finally {
-      setIsLoading(false);
-    }
+  const tagsQuery = useQuery({
+    queryKey: ["tags"],
+    queryFn: async () => (await tagsApi.list()).data,
+    enabled: Boolean(user),
+  });
+  const tags = useMemo(() => tagsQuery.data ?? [], [tagsQuery.data]);
+  const isLoading = tagsQuery.isPending;
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ["tags"] });
+    queryClient.invalidateQueries({ queryKey: ["nav-count", "tags"] });
   }
-  useEffect(() => {
-    if (user) void loadData();
-  }, [user]);
 
   function reset() {
     setForm(emptyForm);
     setEditingId(null);
   }
 
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    try {
-      if (editingId) await tagsApi.update(editingId, form);
-      else await tagsApi.create(form);
+  const saveMutation = useMutation({
+    mutationFn: (payload: TagPayload) =>
+      editingId ? tagsApi.update(editingId, payload) : tagsApi.create(payload),
+    onSuccess: () => {
       reset();
-      await loadData();
-    } catch {
-      setError("No se pudo guardar el tag.");
-    }
+      invalidate();
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => tagsApi.remove(id),
+    onSuccess: (_data, id) => {
+      if (editingId === id) reset();
+      invalidate();
+    },
+  });
+
+  const error = saveMutation.isError
+    ? "No se pudo guardar el tag."
+    : removeMutation.isError
+      ? "No se pudo eliminar el tag."
+      : tagsQuery.isError
+        ? "No se pudieron cargar los tags."
+        : "";
+
+  function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    saveMutation.mutate(form);
   }
 
-  async function remove(id: string) {
-    try {
-      await tagsApi.remove(id);
-      if (editingId === id) reset();
-      await loadData();
-    } catch {
-      setError("No se pudo eliminar el tag.");
-    }
+  function remove(id: string) {
+    removeMutation.mutate(id);
   }
 
   const withColor = useMemo(() => tags.filter((t) => t.color), [tags]);

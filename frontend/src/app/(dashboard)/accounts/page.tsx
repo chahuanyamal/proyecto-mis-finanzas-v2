@@ -5,8 +5,9 @@ import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { Account, AccountPayload, Institution, PatrimonioAccountTrend } from "@/lib/api-types";
 import { asNumber, formatMoney, plain, initials, compactMoney } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
 const emptyForm: AccountPayload = {
   name: "",
@@ -100,42 +101,39 @@ function Sparkline({ trend }: { trend: AccountTrend }) {
 
 export default function AccountsPage() {
   const { user } = useAuthStore();
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [institutions, setInstitutions] = useState<Institution[]>([]);
-  const [accountTrends, setAccountTrends] = useState<AccountTrend[]>([]);
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<AccountPayload>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | Account["account_type"]>("all");
 
-  async function loadData() {
-    setIsLoading(true);
-    setError("");
-    try {
+  const accountsData = useQuery({
+    queryKey: ["accounts"],
+    queryFn: async () => {
       const [accountsResponse, institutionsResponse, trendResponse] = await Promise.all([
         accountsApi.list(),
         accountsApi.institutions(),
         patrimonioApi.accountTrend(12).catch(() => null),
       ]);
-      setAccounts(accountsResponse.data);
-      setInstitutions(institutionsResponse.data);
-      setAccountTrends(trendResponse?.data.accounts ?? []);
-    } catch {
-      setError("No se pudieron cargar las cuentas.");
-    } finally {
-      setIsLoading(false);
-    }
-  }
+      return {
+        accounts: accountsResponse.data,
+        institutions: institutionsResponse.data,
+        accountTrends: trendResponse?.data.accounts ?? [],
+      };
+    },
+    enabled: Boolean(user),
+  });
 
-  useEffect(() => {
-    if (user) {
-      void loadData();
-    }
-  }, [user]);
+  const accounts = useMemo<Account[]>(() => accountsData.data?.accounts ?? [], [accountsData.data]);
+  const institutions = useMemo<Institution[]>(() => accountsData.data?.institutions ?? [], [accountsData.data]);
+  const accountTrends = useMemo<AccountTrend[]>(() => accountsData.data?.accountTrends ?? [], [accountsData.data]);
+  const isLoading = accountsData.isPending;
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    queryClient.invalidateQueries({ queryKey: ["nav-count", "accounts"] });
+  }
 
   function resetForm() {
     setForm(emptyForm);
@@ -161,38 +159,39 @@ export default function AccountsPage() {
     setShowForm(true);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSaving(true);
-    setError("");
-    try {
-      const payload = {
-        ...form,
-        institution_id: form.institution_id || null,
-      };
-      if (editingId) {
-        await accountsApi.update(editingId, payload);
-      } else {
-        await accountsApi.create(payload);
-      }
+  const saveMutation = useMutation({
+    mutationFn: (payload: AccountPayload) =>
+      editingId ? accountsApi.update(editingId, payload) : accountsApi.create(payload),
+    onSuccess: () => {
       resetForm();
-      await loadData();
-    } catch {
-      setError("No se pudo guardar la cuenta.");
-    } finally {
-      setIsSaving(false);
-    }
+      invalidate();
+    },
+  });
+  const isSaving = saveMutation.isPending;
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => accountsApi.remove(id),
+    onSuccess: (_data, id) => {
+      if (editingId === id) resetForm();
+      invalidate();
+    },
+  });
+
+  const error = saveMutation.isError
+    ? "No se pudo guardar la cuenta."
+    : removeMutation.isError
+      ? "No se pudo eliminar la cuenta."
+      : accountsData.isError
+        ? "No se pudieron cargar las cuentas."
+        : "";
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    saveMutation.mutate({ ...form, institution_id: form.institution_id || null });
   }
 
-  async function deleteAccount(id: string) {
-    setError("");
-    try {
-      await accountsApi.remove(id);
-      await loadData();
-      if (editingId === id) resetForm();
-    } catch {
-      setError("No se pudo eliminar la cuenta.");
-    }
+  function deleteAccount(id: string) {
+    removeMutation.mutate(id);
   }
 
   // ── Grouping & derived metrics ─────────────────────────────────────────
