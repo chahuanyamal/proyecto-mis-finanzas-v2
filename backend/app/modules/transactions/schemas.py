@@ -71,6 +71,7 @@ class TransactionOut(BaseModel):
     category_id: uuid.UUID | None
     date: datetime.date
     description: str
+    display_name: str = ""
     amount: Decimal
     currency: str
     movement_type: str
@@ -139,3 +140,45 @@ class PaginatedTransactions(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class AnomalyItem(BaseModel):
+    id: uuid.UUID
+    date: datetime.date
+    description: str
+    display_name: str
+    amount: Decimal
+    currency: str
+    category_id: uuid.UUID | None
+    category_name: str | None
+    category_avg: Decimal
+    ratio: float
+    z_score: float
+
+    @field_serializer("id", "category_id")
+    def _ser_uuid(self, v: uuid.UUID | None) -> str | None:
+        return str(v) if v is not None else None
+
+    @field_serializer("amount", "category_avg")
+    def _ser_dec(self, v: Decimal) -> str:
+        return str(v)
+
+
+class TransactionHistoryEvent(BaseModel):
+    id: uuid.UUID
+    action: str
+    metadata: dict | None = None
+    created_at: datetime.datetime
+
+    @field_serializer("id")
+    def _ser_hid(self, v: uuid.UUID) -> str:
+        return str(v)
+
+
+class LinkTransferIn(BaseModel):
+    transaction_id_a: uuid.UUID
+    transaction_id_b: uuid.UUID
+
+
+class MergeIn(BaseModel):
+    duplicate_id: uuid.UUID

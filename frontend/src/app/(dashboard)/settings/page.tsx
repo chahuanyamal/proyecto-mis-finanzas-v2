@@ -3,6 +3,7 @@
 import { authApi, settingsApi } from "@/lib/api";
 import type { Settings } from "@/lib/api-types";
 import { useAuthStore } from "@/stores/auth";
+import { useThemeStore } from "@/stores/theme";
 import { FormEvent, useEffect, useState } from "react";
 
 type TabKey =
@@ -32,6 +33,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 
 export default function SettingsPage() {
   const { user } = useAuthStore();
+  const setThemeStore = useThemeStore((s) => s.setTheme);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [fullName, setFullName] = useState("");
   const [currency, setCurrency] = useState("CLP");
@@ -61,9 +63,12 @@ export default function SettingsPage() {
       setFullName(r.data.full_name);
       const prefs = r.data.preferences ?? {};
       if (typeof prefs.default_currency === "string") setCurrency(prefs.default_currency as string);
-      if (typeof prefs.theme === "string") setTheme(prefs.theme as string);
+      if (typeof prefs.theme === "string") {
+        setTheme(prefs.theme as string);
+        if (prefs.theme === "dark" || prefs.theme === "light") setThemeStore(prefs.theme);
+      }
     }).catch(() => setError("No se pudieron cargar los ajustes."));
-  }, [user]);
+  }, [user, setThemeStore]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -377,7 +382,15 @@ export default function SettingsPage() {
             <div className="form-grid">
               <div className="field">
                 <label>Tema</label>
-                <select className="input" value={theme} onChange={(e) => setTheme(e.target.value)}>
+                <select
+                  className="input"
+                  value={theme}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setTheme(value);
+                    if (value === "dark" || value === "light") setThemeStore(value);
+                  }}
+                >
                   <option value="dark">Bóveda · Oscuro (actual)</option>
                   <option value="light">Cuaderno · Claro</option>
                   <option value="system">Sistema (auto)</option>

@@ -43,6 +43,14 @@ export default function RootLayout({
       className={`dark ${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
       suppressHydrationWarning
     >
+      <head>
+        {/* Anti-flash: aplica data-theme desde localStorage antes de hidratar. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var s=localStorage.getItem("boveda-theme");var t="dark";if(s){var v=JSON.parse(s);if(v&&v.state&&(v.state.theme==="light"||v.state.theme==="dark"))t=v.state.theme;}document.documentElement.dataset.theme=t;}catch(e){document.documentElement.dataset.theme="dark";}})();`,
+          }}
+        />
+      </head>
       <body className="antialiased">
         <QueryProvider>{children}</QueryProvider>
       </body>

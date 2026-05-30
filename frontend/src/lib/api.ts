@@ -20,6 +20,8 @@ import type {
   CategoryRulePayload,
   Budget,
   BudgetPayload,
+  BudgetSuggestion,
+  CashflowForecast,
   CategoryAggregate,
   DashboardPeriod,
   DashboardSummary,
@@ -48,8 +50,11 @@ import type {
   RecurringDetectResult,
   RecurringPayload,
   ReconciliationSummary,
+  AnomalyItem,
   RuleApplyResult,
   RulePreviewResult,
+  RuleSuggestion,
+  TransactionHistoryEvent,
   SearchResponse,
   Settings,
   SettingsPayload,
@@ -157,6 +162,7 @@ export const rulesApi = {
     api.post<RuleApplyResult>(`/v1/category-rules/${id}/apply`, undefined, {
       params: { only_uncategorized: onlyUncategorized },
     }),
+  suggestions: () => api.get<RuleSuggestion[]>("/v1/category-rules/suggestions"),
 };
 
 export const searchApi = {
@@ -174,6 +180,12 @@ export const transactionsApi = {
   remove: (id: string) => api.delete(`/v1/transactions/${id}`),
   autoCategorize: () => api.post<AutoCategorizeResult>("/v1/transactions/auto-categorize"),
   detectTransfers: () => api.post<{ pairs: number; transactions: number }>("/v1/transactions/detect-transfers"),
+  anomalies: () => api.get<AnomalyItem[]>("/v1/transactions/anomalies"),
+  history: (id: string) => api.get<TransactionHistoryEvent[]>(`/v1/transactions/${id}/history`),
+  linkTransfer: (a: string, b: string) =>
+    api.post<{ linked: boolean }>("/v1/transactions/link-transfer", { transaction_id_a: a, transaction_id_b: b }),
+  merge: (id: string, duplicateId: string) =>
+    api.post<Transaction>(`/v1/transactions/${id}/merge`, { duplicate_id: duplicateId }),
   setNotes: (id: string, notes: string | null) => api.patch<Transaction>(`/v1/transactions/${id}/notes`, { notes }),
   setFlag: (id: string, is_flagged: boolean, reason?: string | null) =>
     api.patch<Transaction>(`/v1/transactions/${id}/flag`, { is_flagged, reason }),
@@ -200,6 +212,8 @@ export const budgetsApi = {
   update: (id: string, payload: Partial<Pick<BudgetPayload, "amount" | "alert_at_percent">>) =>
     api.patch<Budget>(`/v1/budgets/${id}`, payload),
   remove: (id: string) => api.delete(`/v1/budgets/${id}`),
+  suggestions: (month?: string, lookback = 3) =>
+    api.get<BudgetSuggestion[]>("/v1/budgets/suggestions", { params: { month, lookback } }),
 };
 
 export const dashboardApi = {
@@ -208,6 +222,8 @@ export const dashboardApi = {
     api.get<DashboardSummary>("/v1/dashboard/summary", { params: { period, currency } }),
   trends: (months = 12, currency?: string) =>
     api.get<DashboardTrends>("/v1/dashboard/trends", { params: { months, currency } }),
+  forecast: (days = 90, currency = "CLP") =>
+    api.get<CashflowForecast>("/v1/dashboard/forecast", { params: { days, currency } }),
 };
 
 export const goalsApi = {

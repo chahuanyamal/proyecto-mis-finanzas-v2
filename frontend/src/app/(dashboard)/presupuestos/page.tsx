@@ -1,8 +1,8 @@
 "use client";
 
 import { budgetsApi, categoriesApi, dashboardApi } from "@/lib/api";
-import type { Budget, BudgetPayload, Category, MonthlyDashboard } from "@/lib/api-types";
-import { asNumber, plain, shiftMonth, monthLabel, today } from "@/lib/format";
+import type { Budget, BudgetPayload, BudgetSuggestion, Category, MonthlyDashboard } from "@/lib/api-types";
+import { asNumber, plain, shiftMonth, monthLabel, today, chipColor } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -16,6 +16,7 @@ export default function BudgetsPage() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [monthly, setMonthly] = useState<MonthlyDashboard | null>(null);
+  const [suggestions, setSuggestions] = useState<BudgetSuggestion[]>([]);
   const [form, setForm] = useState<BudgetPayload>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -23,14 +24,16 @@ export default function BudgetsPage() {
 
   async function loadData(month = form.month) {
     try {
-      const [budgetResponse, categoryResponse, monthlyResponse] = await Promise.all([
+      const [budgetResponse, categoryResponse, monthlyResponse, suggestionResponse] = await Promise.all([
         budgetsApi.list(month),
         categoriesApi.list(),
         dashboardApi.monthly(month),
+        budgetsApi.suggestions(month),
       ]);
       setBudgets(budgetResponse.data);
       setCategories(categoryResponse.data);
       setMonthly(monthlyResponse.data);
+      setSuggestions(suggestionResponse.data);
     } catch { setError("No se pudieron cargar los presupuestos."); }
   }
   useEffect(() => { if (user) void loadData(); }, [user]);
@@ -44,6 +47,12 @@ export default function BudgetsPage() {
       else await budgetsApi.create(form);
       reset(); await loadData(form.month);
     } catch { setError("No se pudo guardar el presupuesto. Puede existir uno para esa categoría y mes."); }
+  }
+  async function createFromSuggestion(s: BudgetSuggestion) {
+    try {
+      await budgetsApi.create({ category_id: s.category_id, month: form.month, amount: s.suggested_amount, alert_at_percent: 80 });
+      await loadData(form.month);
+    } catch { setError("No se pudo crear el presupuesto sugerido. Puede existir uno para esa categoría y mes."); }
   }
   async function remove(id: string) {
     try { await budgetsApi.remove(id); await loadData(); } catch { setError("No se pudo eliminar el presupuesto."); }
@@ -220,6 +229,36 @@ export default function BudgetsPage() {
           <span>Nuevo presupuesto</span>
         </div>
       </section>
+
+      {/* Presupuestos sugeridos */}
+      {suggestions.length > 0 ? (
+        <div className="panel" style={{ marginBottom: 24 }}>
+          <div className="panel-head" style={{ alignItems: "baseline", marginBottom: 14 }}>
+            <h3>Presupuestos sugeridos</h3>
+            <span className="meta">según tu gasto promedio reciente</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+            {suggestions.map((s) => (
+              <div
+                key={s.category_id}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: "var(--bg-3)", border: "1px solid var(--line)", borderRadius: 10 }}
+              >
+                <span className="chip">
+                  <span className="sw" style={{ background: chipColor(s.category_name) }} />
+                  {s.category_name}
+                </span>
+                <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                  <div className="mono num" style={{ fontSize: 15, fontWeight: 500 }}>${plain(s.suggested_amount)}</div>
+                  <div className="mono text-3" style={{ fontSize: 11, color: "var(--text-3)" }}>prom. ${plain(s.avg_monthly)}/mes</div>
+                </div>
+                <button className="btn primary" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => void createFromSuggestion(s)}>
+                  + Crear
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* Categorías sin presupuesto */}
       {unbudgeted.length > 0 ? (

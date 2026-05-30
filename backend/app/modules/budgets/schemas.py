@@ -38,3 +38,19 @@ class BudgetOut(BaseModel):
     @field_serializer("amount")
     def serialize_amount(self, value: Decimal) -> str:
         return str(value)
+
+
+class BudgetSuggestion(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    suggested_amount: Decimal
+    avg_monthly: Decimal
+    months_observed: int
+
+    @field_serializer("category_id")
+    def _ser_cat(self, value: uuid.UUID) -> str:
+        return str(value)
+
+    @field_serializer("suggested_amount", "avg_monthly")
+    def _ser_amt(self, value: Decimal) -> str:
+        return str(value)
