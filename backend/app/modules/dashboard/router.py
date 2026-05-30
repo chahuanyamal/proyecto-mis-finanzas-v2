@@ -334,3 +334,101 @@ async def dashboard_trends(
             "net": _money(totals["net"]),
         })
     return {"months": months, "currency": currency, "trends": trends}
+
+
+def _advance(value: datetime.date, frequency: str) -> datetime.date:
+    if frequency == "weekly":
+        return value + datetime.timedelta(days=7)
+    if frequency == "yearly":
+        try:
+            return value.replace(year=value.year + 1)
+        except ValueError:
+            return value.replace(year=value.year + 1, day=28)
+    month = value.month
+    year = value.year + (month // 12)
+    nxt = month % 12 + 1
+    return datetime.date(year, nxt, min(value.day, 28))
+
+
+@router.get("/forecast")
+async def cashflow_forecast(
+    days: int = Query(default=90, ge=7, le=365),
+    currency: str = Query(default="CLP", max_length=3),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Proyecta el saldo futuro combinando saldo actual + recurrentes + tendencia.
+
+    - Saldo inicial: suma de saldos de cuentas en la moneda dada.
+    - Tendencia: neto diario promedio de los últimos 90 días.
+    - Eventos: recurrentes activos proyectados en su fecha (ingreso +, gasto −).
+    """
+    from app.models.recurring import RecurringExpense
+
+    today = datetime.date.today()
+    horizon = today + datetime.timedelta(days=days)
+
+    # Saldo inicial (cuentas de la moneda).
+    bal_rows = await db.execute(
+        select(func.coalesce(func.sum(Account.balance), 0)).where(
+            Account.user_id == current_user.id, Account.currency == currency
+        )
+    )
+    start_balance = Decimal(bal_rows.scalar() or 0)
+
+    # Tendencia: neto diario promedio últimos 90 días.
+    window_start = today - datetime.timedelta(days=90)
+    totals = await _totals_for_range(db, current_user, window_start, today + datetime.timedelta(days=1), currency)
+    daily_net = totals["net"] / Decimal(90)
+
+    # Eventos recurrentes proyectados en el horizonte.
+    rec_rows = await db.execute(
+        select(RecurringExpense).where(
+            RecurringExpense.user_id == current_user.id,
+            RecurringExpense.active.is_(True),
+            RecurringExpense.currency == currency,
+            RecurringExpense.next_date.is_not(None),
+        )
+    )
+    deltas: dict[datetime.date, Decimal] = {}
+    for rec in rec_rows.scalars().all():
+        due = rec.next_date
+        sign = Decimal(1) if rec.movement_type == "income" else Decimal(-1)
+        guard = 0
+        while due is not None and due <= horizon and guard < 400:
+            if due >= today:
+                deltas[due] = deltas.get(due, Decimal(0)) + sign * Decimal(rec.amount or 0)
+            due = _advance(due, rec.frequency)
+            guard += 1
+
+    points = []
+    balance = start_balance
+    lowest = start_balance
+    lowest_date = today
+    for offset in range(days + 1):
+        day = today + datetime.timedelta(days=offset)
+        if offset > 0:
+            balance += daily_net
+        rec_delta = deltas.get(day, Decimal(0))
+        balance += rec_delta
+        if balance < lowest:
+            lowest = balance
+            lowest_date = day
+        # Muestra ~ un punto cada pocos días para horizontes largos.
+        if offset % max(1, days // 60) == 0 or offset == days or rec_delta != 0:
+            points.append({
+                "date": day.isoformat(),
+                "balance": str(balance.quantize(Decimal("1"))),
+                "recurring_delta": str(rec_delta.quantize(Decimal("1"))),
+            })
+
+    return {
+        "currency": currency,
+        "days": days,
+        "start_balance": str(start_balance.quantize(Decimal("1"))),
+        "end_balance": str(balance.quantize(Decimal("1"))),
+        "lowest_balance": str(lowest.quantize(Decimal("1"))),
+        "lowest_date": lowest_date.isoformat(),
+        "daily_net_avg": str(daily_net.quantize(Decimal("1"))),
+        "points": points,
+    }

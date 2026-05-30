@@ -20,6 +20,8 @@ import type {
   CategoryRulePayload,
   Budget,
   BudgetPayload,
+  BudgetSuggestion,
+  CashflowForecast,
   CategoryAggregate,
   DashboardPeriod,
   DashboardSummary,
@@ -210,6 +212,8 @@ export const budgetsApi = {
   update: (id: string, payload: Partial<Pick<BudgetPayload, "amount" | "alert_at_percent">>) =>
     api.patch<Budget>(`/v1/budgets/${id}`, payload),
   remove: (id: string) => api.delete(`/v1/budgets/${id}`),
+  suggestions: (month?: string, lookback = 3) =>
+    api.get<BudgetSuggestion[]>("/v1/budgets/suggestions", { params: { month, lookback } }),
 };
 
 export const dashboardApi = {
@@ -218,6 +222,8 @@ export const dashboardApi = {
     api.get<DashboardSummary>("/v1/dashboard/summary", { params: { period, currency } }),
   trends: (months = 12, currency?: string) =>
     api.get<DashboardTrends>("/v1/dashboard/trends", { params: { months, currency } }),
+  forecast: (days = 90, currency = "CLP") =>
+    api.get<CashflowForecast>("/v1/dashboard/forecast", { params: { days, currency } }),
 };
 
 export const goalsApi = {

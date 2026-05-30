@@ -247,6 +247,31 @@ export interface BudgetPayload {
   alert_at_percent: number;
 }
 
+export interface BudgetSuggestion {
+  category_id: string;
+  category_name: string;
+  suggested_amount: string;
+  avg_monthly: string;
+  months_observed: number;
+}
+
+export interface CashflowForecastPoint {
+  date: string;
+  balance: string;
+  recurring_delta: string;
+}
+
+export interface CashflowForecast {
+  currency: string;
+  days: number;
+  start_balance: string;
+  end_balance: string;
+  lowest_balance: string;
+  lowest_date: string;
+  daily_net_avg: string;
+  points: CashflowForecastPoint[];
+}
+
 export interface MonthlyDashboard {
   month: string;
   income: string;
